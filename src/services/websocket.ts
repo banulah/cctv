@@ -7,10 +7,9 @@ class WebSocketService {
   private maxReconnectAttempts = 5
 
   connect() {
-    // Use public WebSocket URL for production
-    const isProd = import.meta.env.PROD
-    const wsUrl = isProd
-      ? 'wss://122.255.33.126:36589/ws/alerts'
+    // Use environment variable for WebSocket URL
+    const wsUrl = import.meta.env.VITE_WS_URL
+      ? `${import.meta.env.VITE_WS_URL}/alerts`
       : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/alerts`
 
     console.log('[WebSocket] Attempting to connect to:', wsUrl)
