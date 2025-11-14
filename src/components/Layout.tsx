@@ -31,15 +31,13 @@ export default function Layout({ children }: LayoutProps) {
       <div className="fixed top-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 py-2">
         <div className="max-w-screen-2xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-gray-900">RISE Village</h1>
-              <p className="text-xs text-gray-500">Surveillance System</p>
-            </div>
+            <img
+              src="/assets/RiseLogo.webp"
+              alt="RISE Village Logo"
+              className=" h-10 mx-auto drop-shadow-2xl"
+            />
+            <p className="text-xs text-gray-500">Surveillance System</p>
+            
           </div>
 
           {/* User Menu */}

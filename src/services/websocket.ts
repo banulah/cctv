@@ -7,8 +7,11 @@ class WebSocketService {
   private maxReconnectAttempts = 5
 
   connect() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/ws/alerts`
+    // Use public WebSocket URL for production
+    const isProd = import.meta.env.PROD
+    const wsUrl = isProd
+      ? 'wss://122.255.33.126:36589/ws/alerts'
+      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/alerts`
 
     console.log('[WebSocket] Attempting to connect to:', wsUrl)
     this.ws = new WebSocket(wsUrl)
@@ -21,7 +24,7 @@ class WebSocketService {
     this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        console.log('[WebSocket] Received event:', data)
+        // Removed console.log to prevent spam - events come in multiple times per second
         this.callbacks.forEach(cb => cb(data))
       } catch (e) {
         console.error('[WebSocket] Failed to parse message:', e, event.data)

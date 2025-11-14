@@ -438,18 +438,7 @@ export const CameraCard = ({
                   </div>
                 </div>
 
-                {/* Stream Path - Compact */}
-                <div className="mb-2 bg-slate-700 bg-opacity-40 rounded px-2 py-1.5">
-                  <div className="text-xs text-gray-400 mb-0.5 flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Stream Path
-                  </div>
-                  <div className="text-xs text-white font-mono truncate" title={camera.mediamtx_path}>
-                    {camera.mediamtx_path}
-                  </div>
-                </div>
+              
 
                 {/* AI Features - Toggle Style */}
                 <div className="mb-2 bg-slate-700 bg-opacity-40 rounded px-2 py-2">

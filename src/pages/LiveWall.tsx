@@ -496,7 +496,7 @@ export default function LiveWall() {
 
   return (
     <Layout>
-      <div className="px-4 sm:px-6 lg:px-8 pt-5">
+      <div className="p-5 max-w-screen-2xl mx-auto">
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Live Wall</h1>

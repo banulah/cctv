@@ -1,4 +1,7 @@
-const API_BASE = '/api'
+// Use public URL for production, relative path for development
+const API_BASE = import.meta.env.PROD
+  ? 'https://122.255.33.126:36589/api'
+  : '/api'
 
 // Helper function to add auth token to requests
 function getAuthHeaders(): HeadersInit {

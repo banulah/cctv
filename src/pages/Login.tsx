@@ -31,15 +31,15 @@ export default function Login() {
       <div className="max-w-md w-full space-y-8">
         {/* Logo/Header */}
         <div className="text-center">
-          <div className="mx-auto mb-6">
+          <div className="mx-auto ">
             <img
               src="/assets/RiseLogo.webp"
               alt="RISE Village Logo"
-              className="w-40 h-40 mx-auto drop-shadow-2xl"
+              className=" h-40 mx-auto drop-shadow-2xl"
             />
           </div>
-          <h2 className="text-3xl font-bold text-white">RISE Village</h2>
-          <p className="mt-2 text-sm text-blue-200">Intelligent Surveillance & Analytics</p>
+          
+          <p className=" text-sm text-blue-200">Intelligent Surveillance & Analytics</p>
         </div>
 
         {/* Login Form */}

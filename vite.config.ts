@@ -14,18 +14,20 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: process.env.BACKEND_URL || 'http://backend:8000',
+        target: process.env.BACKEND_URL || 'https://localhost:8000',
         changeOrigin: true,
+        secure: false, // Allow self-signed certificates
       },
       '/hls': {
-        target: process.env.MEDIAMTX_URL || 'http://mediamtx:8888',
+        target: process.env.MEDIAMTX_URL || 'http://localhost:8888',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/hls/, '') // Remove /hls prefix
+        rewrite: (path) => path.replace(/^\/hls/, ''),
       },
       '/ws': {
-        target: process.env.BACKEND_WS_URL || 'ws://backend:8000',
+        target: process.env.BACKEND_WS_URL || 'wss://localhost:8000',
         ws: true,
         changeOrigin: true,
+        secure: false,
       }
     }
   }

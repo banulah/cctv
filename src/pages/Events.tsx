@@ -158,7 +158,7 @@ export default function Events() {
 
   return (
     <Layout>
-      <div className="px-4 sm:px-6 lg:px-8 pt-5">
+      <div className="pt-5 max-w-screen-2xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Events & Hotlist</h1>
           <p className="mt-2 text-sm text-gray-600">View system events and manage watchlist plates</p>
