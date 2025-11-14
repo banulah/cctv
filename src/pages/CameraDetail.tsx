@@ -101,7 +101,9 @@ export default function CameraDetail() {
     if (!camera || !videoRef.current) return
 
     const video = videoRef.current
-    const streamUrl = `/hls/cam/${camera.id}/${quality}/index.m3u8`
+    // Use backend URL from environment config (for production) or current origin (for development with proxy)
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
+    const streamUrl = `${backendUrl}/hls/cam/${camera.id}/${quality}/index.m3u8`
 
     // Reset loading state when video element changes
     setIsVideoLoading(true)

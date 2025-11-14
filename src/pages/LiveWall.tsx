@@ -67,9 +67,11 @@ export default function LiveWall() {
 
       // Use low quality stream for grid view (bandwidth efficient)
       const relativeUrl = `/hls/cam/${cam.id}/low/index.m3u8`
+      // Use backend URL from environment config (for production) or current origin (for development with proxy)
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
       const hlsUrl = relativeUrl.startsWith('http')
         ? relativeUrl
-        : `${window.location.origin}${relativeUrl}`
+        : `${backendUrl}${relativeUrl}`
 
       console.log(`Loading HLS stream for ${cam.name}: ${hlsUrl}`)
 
@@ -225,9 +227,11 @@ export default function LiveWall() {
           }
           // Use low quality stream for grid view
           const relativeUrl = `/hls/cam/${cam.id}/low/index.m3u8`
+          // Use backend URL from environment config (for production) or current origin (for development with proxy)
+          const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
           const hlsUrl = relativeUrl.startsWith('http')
             ? relativeUrl
-            : `${window.location.origin}${relativeUrl}`
+            : `${backendUrl}${relativeUrl}`
 
           // Destroy existing instance
           if (hlsInstances.current[cam.id]) {
