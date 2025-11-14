@@ -33,9 +33,9 @@ export default function Login() {
         <div className="text-center">
           <div className="mx-auto mb-6">
             <img
-              src="/assets/rise-logo.svg"
+              src="/assets/RiseLogo.webp"
               alt="RISE Village Logo"
-              className="w-32 h-32 mx-auto drop-shadow-2xl"
+              className="w-40 h-40 mx-auto drop-shadow-2xl"
             />
           </div>
           <h2 className="text-3xl font-bold text-white">RISE Village</h2>
