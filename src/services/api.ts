@@ -1,5 +1,5 @@
 // Use environment variable for API base URL
-const API_BASE = import.meta.env.VITE_BACKEND_URL
+export const API_BASE = import.meta.env.VITE_BACKEND_URL
   ? `${import.meta.env.VITE_BACKEND_URL}/api`
   : '/api'
 
