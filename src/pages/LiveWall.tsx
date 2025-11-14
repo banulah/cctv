@@ -129,10 +129,24 @@ export default function LiveWall() {
           hls.audioTrack = -1
           console.log(`Audio disabled for ${cam.name}`)
 
-          video.play().catch(err => {
-            console.error(`Play error for ${cam.name}:`, err)
-            setStreamErrors(prev => ({ ...prev, [cam.id]: 'Playback failed' }))
-          })
+          // Play with proper error handling for browser power-saving
+          const playPromise = video.play()
+          if (playPromise !== undefined) {
+            playPromise.then(() => {
+              console.log(`Playback started for ${cam.name}`)
+            }).catch(err => {
+              console.error(`Play error for ${cam.name}:`, err)
+              // If AbortError (browser power-saving), retry playback
+              if (err.name === 'AbortError') {
+                console.log(`Retrying playback for ${cam.name} after AbortError...`)
+                setTimeout(() => {
+                  video.play().catch(e => console.error(`Retry failed for ${cam.name}:`, e))
+                }, 1000)
+              } else {
+                setStreamErrors(prev => ({ ...prev, [cam.id]: 'Playback failed' }))
+              }
+            })
+          }
         })
 
         // Capture stream information when metadata loads and track real-time stats
