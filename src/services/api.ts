@@ -3,6 +3,14 @@ const API_BASE = import.meta.env.VITE_BACKEND_URL
   ? `${import.meta.env.VITE_BACKEND_URL}/api`
   : '/api'
 
+// Debug: Log environment configuration
+console.log('[API Config]', {
+  VITE_BACKEND_URL: import.meta.env.VITE_BACKEND_URL,
+  API_BASE: API_BASE,
+  MODE: import.meta.env.MODE,
+  PROD: import.meta.env.PROD
+})
+
 // Helper function to add auth token to requests
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('auth_token')
