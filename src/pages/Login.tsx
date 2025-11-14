@@ -31,10 +31,12 @@ export default function Login() {
       <div className="max-w-md w-full space-y-8">
         {/* Logo/Header */}
         <div className="text-center">
-          <div className="mx-auto h-16 w-16 bg-white rounded-full flex items-center justify-center mb-4">
-            <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
+          <div className="mx-auto mb-6">
+            <img
+              src="/assets/rise-logo.svg"
+              alt="RISE Village Logo"
+              className="w-32 h-32 mx-auto drop-shadow-2xl"
+            />
           </div>
           <h2 className="text-3xl font-bold text-white">RISE Village</h2>
           <p className="mt-2 text-sm text-blue-200">Intelligent Surveillance & Analytics</p>
