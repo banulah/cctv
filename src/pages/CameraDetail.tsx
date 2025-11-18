@@ -21,6 +21,8 @@ export default function CameraDetail() {
   const eventsIntervalRef = useRef<number | null>(null)
   const [isVideoLoading, setIsVideoLoading] = useState(true)
   const [hasVideoStarted, setHasVideoStarted] = useState(false)
+  const errorCountRef = useRef<number>(0)
+  const [qualityFallbackNotice, setQualityFallbackNotice] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -143,16 +145,49 @@ export default function CameraDetail() {
 
     if (Hls.isSupported()) {
       const hls = new Hls({
-        maxBufferLength: 10,
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 10,
-        lowLatencyMode: false,
+        // BALANCED CONFIGURATION FOR STABLE STREAMING
+        lowLatencyMode: false,           // Disabled for better stability
         enableWorker: true,
-        maxMaxBufferLength: 20
+
+        // Balanced buffering for stability
+        maxBufferLength: 10,             // 10 seconds buffer for stability
+        maxMaxBufferLength: 20,          // Max 20 seconds buffer
+        maxBufferSize: 10 * 1000 * 1000, // 10MB buffer
+        maxBufferHole: 0.5,              // Allow larger gaps
+
+        // Balanced live sync - stay reasonably close to live
+        backBufferLength: 5,             // Keep 5 seconds back buffer
+        liveSyncDurationCount: 1,        // Start 1 segment from live (~3 seconds) - REDUCED FOR LOW LATENCY
+        liveMaxLatencyDurationCount: 3,  // Jump if 3+ segments behind (~9s) - REDUCED TO STAY LIVE
+        liveBackBufferLength: 3,         // 3 seconds live back buffer - REDUCED
+
+        // FORCE LOW LATENCY - Always seek to live edge
+        liveDurationInfinity: true,       // Treat live as infinite duration
+        highBufferWatchdogPeriod: 1,      // Check buffer every 1 second
+
+        // More retries for stability
+        manifestLoadingMaxRetry: 6,
+        levelLoadingMaxRetry: 6,
+        fragLoadingMaxRetry: 10
       })
 
       hls.loadSource(streamUrl)
       hls.attachMedia(video)
+
+      // FORCE SEEK TO LIVE EDGE on every fragment loaded
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        if (video && !video.paused) {
+          const bufferEnd = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0
+          const currentTime = video.currentTime
+          const latency = bufferEnd - currentTime
+
+          // If we're more than 6 seconds behind live, jump forward
+          if (latency > 6) {
+            console.log(`Latency too high (${latency.toFixed(1)}s), seeking to live edge`)
+            video.currentTime = bufferEnd - 1  // Seek to 1 second before buffer end
+          }
+        }
+      })
 
       let lastFrameCount = 0
       let lastFpsCheck = Date.now()
@@ -160,6 +195,10 @@ export default function CameraDetail() {
 
       // Get stream info from manifest
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        // Reset error count on successful manifest load
+        errorCountRef.current = 0
+        setError(null)
+
         if (hls.levels && hls.levels.length > 0) {
           const level = hls.levels[0]
           setStreamInfo({
@@ -169,6 +208,14 @@ export default function CameraDetail() {
           })
         }
         video.play().catch(err => console.error('Play error:', err))
+      })
+
+      // Reset error count when playback starts successfully
+      video.addEventListener('playing', () => {
+        errorCountRef.current = 0
+        setError(null)
+        setIsVideoLoading(false)
+        setHasVideoStarted(true)
       })
 
       // Track bandwidth from fragments
@@ -220,7 +267,89 @@ export default function CameraDetail() {
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) {
           console.error('HLS error:', data)
-          setError('Stream error')
+          errorCountRef.current += 1
+
+          // Handle 404 errors - stream not available
+          if (data.details === 'manifestLoadError' && data.response?.code === 404) {
+            // Auto-fallback: if high quality fails multiple times, switch to low
+            if (quality === 'high' && errorCountRef.current >= 3) {
+              console.log('High quality failed multiple times, auto-switching to low quality')
+              setQualityFallbackNotice('High quality unavailable. Switched to low quality.')
+              setQuality('low')
+              errorCountRef.current = 0
+              // Clear notice after 5 seconds
+              setTimeout(() => setQualityFallbackNotice(null), 5000)
+              return
+            }
+            setError(`${quality === 'high' ? 'High' : 'Low'} quality stream not available${quality === 'high' ? '. Will auto-switch to low quality...' : '.'}`)
+            // Retry after delay
+            setTimeout(() => {
+              if (camera && videoRef.current) {
+                setupVideo()
+              }
+            }, 3000)
+            return
+          }
+
+          // Handle media sequence mismatch - recreate HLS instance
+          if (data.details === 'levelParsingError' || data.details === 'levelLoadError') {
+            console.warn('Playlist parsing error, attempting recovery...')
+            errorCountRef.current += 1
+            // Auto-fallback after multiple parsing errors on high quality
+            if (quality === 'high' && errorCountRef.current >= 5) {
+              console.log('High quality has persistent parsing errors, switching to low quality')
+              setQualityFallbackNotice('High quality unstable. Switched to low quality.')
+              setQuality('low')
+              errorCountRef.current = 0
+              setTimeout(() => setQualityFallbackNotice(null), 5000)
+              return
+            }
+            // Retry setup after short delay
+            setTimeout(() => {
+              if (camera && videoRef.current) {
+                setupVideo()
+              }
+            }, 2000)
+            return
+          }
+
+          // Handle other fatal errors with potential fallback
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.error('Fatal network error')
+              // Auto-fallback on repeated network errors with high quality
+              if (quality === 'high' && errorCountRef.current >= 4) {
+                console.log('Repeated network errors on high quality, switching to low quality')
+                setQualityFallbackNotice('Network issues with high quality. Switched to low quality.')
+                setQuality('low')
+                errorCountRef.current = 0
+                setTimeout(() => setQualityFallbackNotice(null), 5000)
+              } else {
+                setError('Network error - stream unavailable. Retrying...')
+                // Retry after delay
+                setTimeout(() => {
+                  setError(null)
+                  if (camera && videoRef.current) {
+                    setupVideo()
+                  }
+                }, 3000)
+              }
+              break
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.error('Fatal media error')
+              setError('Media error - unable to play stream')
+              break
+            default:
+              setError('Stream error - please refresh')
+              break
+          }
+        } else {
+          // Non-fatal errors - log but don't show error to user
+          if (data.details === 'levelParsingError') {
+            console.warn('Non-fatal playlist parsing error, continuing...')
+          } else if (!data.details?.includes('buffer')) {
+            console.warn('Non-fatal HLS error:', data.details)
+          }
         }
       })
 
@@ -268,6 +397,16 @@ export default function CameraDetail() {
   return (
     <Layout>
       <div className="p-6 max-w-screen-2xl mx-auto">
+        {/* Quality Fallback Notice */}
+        {qualityFallbackNotice && (
+          <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-3">
+            <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-yellow-800 text-sm font-medium">{qualityFallbackNotice}</p>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-2 ">
           <div className="flex items-center gap-4">

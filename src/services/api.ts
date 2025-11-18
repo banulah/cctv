@@ -154,6 +154,17 @@ export const api = {
     }
   },
 
+  restartStream: async (id: number): Promise<{ status: string; path: string; message?: string }> => {
+    const res = await fetch(`${API_BASE}/cameras/${id}/restart-stream`, {
+      method: 'POST'
+    })
+    if (!res.ok) {
+      const error = await res.json()
+      throw new Error(error.detail || 'Failed to restart stream')
+    }
+    return res.json()
+  },
+
   // Events
   getEvents: async (type?: string, camera_id?: number): Promise<Event[]> => {
     const params = new URLSearchParams()

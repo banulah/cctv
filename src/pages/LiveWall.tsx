@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { api, Camera } from '../services/api'
 import Hls from 'hls.js'
 import Layout from '../components/Layout'
@@ -25,6 +25,22 @@ export default function LiveWall() {
   const [formErrors, setFormErrors] = useState<{ name?: string; rtsp_url?: string }>({})
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
+  // Define loadCameras before useEffect so it can be used
+  const loadCameras = useCallback(async () => {
+    try {
+      setError(null)
+      const data = await api.getCameras()
+      console.log('Loaded cameras:', data.length, data)
+      setCameras(data || []) // Show all cameras, not just online ones
+      setLoading(false)
+    } catch (error: any) {
+      console.error('Failed to load cameras:', error)
+      setError(error.message || 'Failed to load cameras')
+      setLoading(false)
+      setCameras([]) // Clear cameras on error
+    }
+  }, [])
+
   useEffect(() => {
     // Load cameras immediately on mount
     loadCameras()
@@ -36,7 +52,7 @@ export default function LiveWall() {
       // Cleanup all HLS instances on unmount
       Object.values(hlsInstances.current).forEach(hls => hls?.destroy())
     }
-  }, [])
+  }, [loadCameras])
 
   useEffect(() => {
     // Get current camera IDs
@@ -65,6 +81,15 @@ export default function LiveWall() {
       // Mark camera as initializing (will be cleared when video starts playing)
       setInitializingCameras(prev => ({ ...prev, [cam.id]: true }))
 
+      // Fallback: Clear initializing state after 5 seconds even if playing event doesn't fire
+      setTimeout(() => {
+        setInitializingCameras(prev => {
+          const newState = { ...prev }
+          delete newState[cam.id]
+          return newState
+        })
+      }, 5000)
+
       // Use low quality stream for grid view (bandwidth efficient)
       const relativeUrl = `/hls/cam/${cam.id}/low/index.m3u8`
       // Use backend URL from environment config (for production) or current origin (for development with proxy)
@@ -86,37 +111,55 @@ export default function LiveWall() {
         const hls = new Hls({
           debug: false,  // Disable debug for grid view performance
           enableWorker: true,
-          lowLatencyMode: false,  // Disable ultra-low latency for smoother playback
+          lowLatencyMode: true,  // ENABLED for synchronized low-latency playback
 
-          // Balanced buffer - smooth playback with reasonable latency
-          maxBufferLength: 10,       // Buffer 10 seconds ahead for smooth playback
-          maxMaxBufferLength: 20,    // Max 20 seconds buffer
-          maxBufferSize: 10 * 1000 * 1000,  // 10MB buffer
-          maxBufferHole: 0.5,        // Tolerate small gaps
+          // MINIMAL BUFFER - Optimized for real-time synchronization
+          maxBufferLength: 3,        // Only buffer 3 seconds (reduced from 10)
+          maxMaxBufferLength: 6,     // Max 6 seconds buffer (reduced from 20)
+          maxBufferSize: 3 * 1000 * 1000,  // 3MB buffer (reduced from 10MB)
+          maxBufferHole: 0.2,        // Small gap tolerance for sync
 
-          // Live sync - Less aggressive for smoother playback
-          backBufferLength: 5,              // Keep 5 seconds of old segments
-          liveSyncDurationCount: 3,         // Start 3 segments from live edge (~6 seconds)
-          liveMaxLatencyDurationCount: 10,  // Allow up to 10 segments behind before jumping
-          liveDurationInfinity: false,
+          // ULTRA LOW LATENCY LIVE SYNC - Stay at live edge for synchronization
+          backBufferLength: 1,              // Keep minimal back buffer
+          liveSyncDurationCount: 1,         // Start 1 segment from live edge (~0.5s with 0.5s segments)
+          liveMaxLatencyDurationCount: 2,   // Jump forward if more than 2 segments behind (~1s)
+          liveDurationInfinity: true,       // Treat as infinite for live
+          liveBackBufferLength: 1,          // 1 second live back buffer
+          highBufferWatchdogPeriod: 0.5,    // Check buffer every 0.5 seconds
 
-          // Fragment loading with retries
-          maxFragLookUpTolerance: 0.5,
-          manifestLoadingTimeOut: 10000,
-          manifestLoadingMaxRetry: 4,
-          levelLoadingTimeOut: 10000,
-          levelLoadingMaxRetry: 4,
-          fragLoadingTimeOut: 10000,
-          fragLoadingMaxRetry: 6,
+          // Fragment loading with aggressive timeouts for low latency
+          maxFragLookUpTolerance: 0.1,
+          manifestLoadingTimeOut: 5000,      // 5 seconds (reduced)
+          manifestLoadingMaxRetry: 6,        // More retries
+          levelLoadingTimeOut: 5000,         // 5 seconds (reduced)
+          levelLoadingMaxRetry: 6,           // More retries
+          fragLoadingTimeOut: 5000,          // 5 seconds (reduced)
+          fragLoadingMaxRetry: 10,           // More retries for stability
 
           xhrSetup: (xhr) => {
             xhr.withCredentials = false
-            xhr.timeout = 10000
+            xhr.timeout = 5000               // 5 seconds (reduced)
           }
         })
 
         hls.loadSource(hlsUrl)
         hls.attachMedia(video)
+
+        // AGGRESSIVE SYNC TO LIVE EDGE - Keep all streams synchronized
+        hls.on(Hls.Events.FRAG_LOADED, () => {
+          if (video && !video.paused) {
+            const bufferEnd = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0
+            const currentTime = video.currentTime
+            const latency = bufferEnd - currentTime
+
+            // AGGRESSIVE: If we're more than 2 seconds behind live, jump forward
+            // This keeps all cameras at the same live edge for perfect sync
+            if (latency > 2) {
+              console.log(`${cam.name}: Latency ${latency.toFixed(1)}s, seeking to live edge`)
+              video.currentTime = bufferEnd - 0.5  // Stay 0.5s from live edge
+            }
+          }
+        })
 
         // Track playback state
         let isPlaying = false
@@ -253,36 +296,38 @@ export default function LiveWall() {
             hlsInstances.current[cam.id] = null
           }
 
-          // Create new HLS instance with balanced buffer settings
+          // Create new HLS instance with LOW LATENCY settings for synchronization
           const newHls = new Hls({
             debug: false,
             enableWorker: true,
-            lowLatencyMode: false,  // Smoother playback
+            lowLatencyMode: true,  // ENABLED for synchronized low-latency playback
 
-            // Balanced buffer for smooth playback
-            maxBufferLength: 10,
-            maxMaxBufferLength: 20,
-            maxBufferSize: 10 * 1000 * 1000,
-            maxBufferHole: 0.5,
+            // MINIMAL BUFFER - Optimized for real-time synchronization
+            maxBufferLength: 3,        // Only buffer 3 seconds
+            maxMaxBufferLength: 6,     // Max 6 seconds buffer
+            maxBufferSize: 3 * 1000 * 1000,  // 3MB buffer
+            maxBufferHole: 0.2,        // Small gap tolerance for sync
 
-            // Less aggressive live sync
-            backBufferLength: 5,
-            liveSyncDurationCount: 3,
-            liveMaxLatencyDurationCount: 10,
-            liveDurationInfinity: false,
+            // ULTRA LOW LATENCY LIVE SYNC - Stay at live edge
+            backBufferLength: 1,              // Keep minimal back buffer
+            liveSyncDurationCount: 1,         // Start 1 segment from live edge
+            liveMaxLatencyDurationCount: 2,   // Jump forward if more than 2 segments behind
+            liveDurationInfinity: true,
+            liveBackBufferLength: 1,          // 1 second live back buffer
+            highBufferWatchdogPeriod: 0.5,    // Check buffer every 0.5 seconds
 
-            // Fragment loading with retries
-            maxFragLookUpTolerance: 0.5,
-            manifestLoadingTimeOut: 10000,
-            manifestLoadingMaxRetry: 4,
-            levelLoadingTimeOut: 10000,
-            levelLoadingMaxRetry: 4,
-            fragLoadingTimeOut: 10000,
-            fragLoadingMaxRetry: 6,
+            // Fragment loading with aggressive timeouts
+            maxFragLookUpTolerance: 0.1,
+            manifestLoadingTimeOut: 5000,      // 5 seconds
+            manifestLoadingMaxRetry: 6,        // More retries
+            levelLoadingTimeOut: 5000,         // 5 seconds
+            levelLoadingMaxRetry: 6,           // More retries
+            fragLoadingTimeOut: 5000,          // 5 seconds
+            fragLoadingMaxRetry: 10,           // More retries for stability
 
             xhrSetup: (xhr) => {
               xhr.withCredentials = false
-              xhr.timeout = 10000
+              xhr.timeout = 5000               // 5 seconds
             }
           })
 
@@ -318,12 +363,34 @@ export default function LiveWall() {
           if (data.fatal) {
             console.error(`HLS error for ${cam.name}:`, data)
 
+            // Handle 404 errors (manifest not found) - don't retry indefinitely
+            if (data.details === 'manifestLoadError' && data.response?.code === 404) {
+              console.error(`Stream not available for ${cam.name} (404), stopping retries`)
+              setStreamErrors(prev => ({ ...prev, [cam.id]: 'Stream Not Available' }))
+              setOfflineCameras(prev => ({ ...prev, [cam.id]: true }))
+              setInitializingCameras(prev => ({ ...prev, [cam.id]: false }))
+              // Clean up to stop retry loop
+              if (hlsInstances.current[cam.id]) {
+                hlsInstances.current[cam.id]?.destroy()
+                hlsInstances.current[cam.id] = null
+              }
+              return
+            }
+
+            // Handle level parsing errors (media sequence mismatch) - recover gracefully
+            if (data.details === 'levelParsingError' || data.details === 'levelLoadError') {
+              console.warn(`Playlist error for ${cam.name}, attempting recovery...`)
+              // Destroy and recreate HLS instance to reset state
+              setTimeout(retryLoad, 2000)
+              return
+            }
+
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 console.log(`Network error for ${cam.name}, trying to recover...`)
                 try {
                   hls.startLoad()
-                  // If recovery fails, retry after delay
+                  // If recovery fails, retry after delay (with limit)
                   setTimeout(() => {
                     if (hlsInstances.current[cam.id] === hls && hls.media?.readyState === 0) {
                       retryLoad()
@@ -364,6 +431,9 @@ export default function LiveWall() {
               } catch (e) {
                 console.error(`Failed to restart after audio timeout for ${cam.name}`)
               }
+            } else if (data.details === 'bufferAppendError') {
+              // Audio buffer append error - can be safely ignored since videos are muted
+              console.warn(`Buffer append error for ${cam.name} (likely audio), continuing...`)
             } else if (data.details === 'bufferStalledError') {
               console.warn(`Buffer stalled for ${cam.name}, trying to skip ahead...`)
               // Try to jump ahead slightly to get past the stall
@@ -378,6 +448,9 @@ export default function LiveWall() {
               } catch (e) {
                 console.error(`Failed to skip stall for ${cam.name}`)
               }
+            } else if (data.details === 'levelParsingError') {
+              // Non-fatal level parsing error - try to continue
+              console.warn(`Non-fatal playlist parsing error for ${cam.name}, continuing...`)
             } else if (!data.details?.includes('buffer')) {
               // Log non-buffer errors to avoid console spam
               console.warn(`Non-fatal HLS error for ${cam.name}:`, data.details)
@@ -405,21 +478,6 @@ export default function LiveWall() {
     // No cleanup here - we handle camera removal at the start of the effect
     // Cleanup only happens on component unmount (handled in the mount effect)
   }, [cameras])
-
-  const loadCameras = async () => {
-    try {
-      setError(null)
-      const data = await api.getCameras()
-      console.log('Loaded cameras:', data.length, data)
-      setCameras(data || []) // Show all cameras, not just online ones
-      setLoading(false)
-    } catch (error: any) {
-      console.error('Failed to load cameras:', error)
-      setError(error.message || 'Failed to load cameras')
-      setLoading(false)
-      setCameras([]) // Clear cameras on error
-    }
-  }
 
   const validateCameraForm = (): boolean => {
     const newErrors: { name?: string; rtsp_url?: string } = {}
@@ -479,7 +537,7 @@ export default function LiveWall() {
     }
   }
 
-  const handleStartStream = async (cameraId: number) => {
+  const handleStartStream = useCallback(async (cameraId: number) => {
     try {
       setStartingStreams(prev => ({ ...prev, [cameraId]: true }))
       await api.startCameraStream(cameraId)
@@ -493,9 +551,41 @@ export default function LiveWall() {
       setStreamErrors(prev => ({ ...prev, [cameraId]: error.message || 'Failed to start stream' }))
       setStartingStreams(prev => ({ ...prev, [cameraId]: false }))
     }
-  }
+  }, [loadCameras])
 
-  const handleRetry = (cameraId: number) => {
+  const handleRestartStream = useCallback(async (cameraId: number) => {
+    try {
+      setStartingStreams(prev => ({ ...prev, [cameraId]: true }))
+      setStreamErrors(prev => {
+        const newErrors = { ...prev }
+        delete newErrors[cameraId]
+        return newErrors
+      })
+      setOfflineCameras(prev => {
+        const newOffline = { ...prev }
+        delete newOffline[cameraId]
+        return newOffline
+      })
+
+      // Clear retry count and re-initialize
+      retryCounts.current[cameraId] = 0
+      initializedCameras.current.delete(cameraId)
+
+      await api.restartStream(cameraId)
+
+      // Wait for stream to restart, then reload cameras
+      setTimeout(() => {
+        loadCameras()
+        setStartingStreams(prev => ({ ...prev, [cameraId]: false }))
+      }, 5000)
+    } catch (error: any) {
+      console.error('Failed to restart stream:', error)
+      setStreamErrors(prev => ({ ...prev, [cameraId]: error.message || 'Failed to restart stream' }))
+      setStartingStreams(prev => ({ ...prev, [cameraId]: false }))
+    }
+  }, [loadCameras])
+
+  const handleRetry = useCallback((cameraId: number) => {
     // Clear errors, offline status, and retry
     setStreamErrors(prev => {
       const newErrors = { ...prev }
@@ -510,7 +600,7 @@ export default function LiveWall() {
     retryCounts.current[cameraId] = 0
     initializedCameras.current.delete(cameraId)  // Allow re-initialization
     loadCameras()
-  }
+  }, [loadCameras])
 
   return (
     <Layout>
@@ -653,20 +743,31 @@ export default function LiveWall() {
           </div>
         ) : (
           <CameraGrid>
-            {cameras.map(camera => (
-              <CameraCard
-                key={camera.id}
-                camera={camera}
-                streamError={streamErrors[camera.id] || null}
-                isInitializing={initializingCameras[camera.id] || false}
-                isStarting={startingStreams[camera.id] || false}
-                isOffline={offlineCameras[camera.id] || false}
-                onStartStream={() => handleStartStream(camera.id)}
-                onRetry={() => handleRetry(camera.id)}
-                videoRef={el => videoRefs.current[camera.id] = el}
-                onCameraUpdated={loadCameras}
-              />
-            ))}
+            {cameras.map(camera => {
+              // Create stable callback refs to prevent unnecessary re-renders
+              const handleStart = () => handleStartStream(camera.id)
+              const handleRestart = () => handleRestartStream(camera.id)
+              const handleRetryClick = () => handleRetry(camera.id)
+              const setVideoRef = (el: HTMLVideoElement | null) => {
+                videoRefs.current[camera.id] = el
+              }
+
+              return (
+                <CameraCard
+                  key={camera.id}
+                  camera={camera}
+                  streamError={streamErrors[camera.id] || null}
+                  isInitializing={initializingCameras[camera.id] || false}
+                  isStarting={startingStreams[camera.id] || false}
+                  isOffline={offlineCameras[camera.id] || false}
+                  onStartStream={handleStart}
+                  onRestartStream={handleRestart}
+                  onRetry={handleRetryClick}
+                  videoRef={setVideoRef}
+                  onCameraUpdated={loadCameras}
+                />
+              )
+            })}
           </CameraGrid>
         )}
 

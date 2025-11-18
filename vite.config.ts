@@ -14,20 +14,24 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: process.env.BACKEND_URL || 'https://localhost:8000',
+        target: 'http://backend:8000',  // Use internal Docker network
         changeOrigin: true,
-        secure: false, // Allow self-signed certificates
+        secure: false,
+        timeout: 120000,
       },
       '/hls': {
-        target: process.env.MEDIAMTX_URL || 'http://localhost:8888',
+        target: 'http://mediamtx:8888',  // Use internal Docker network
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/hls/, ''),
+        timeout: 300000,
+        proxyTimeout: 300000,
       },
       '/ws': {
-        target: process.env.BACKEND_WS_URL || 'wss://localhost:8000',
+        target: 'ws://backend:8000',  // Use internal Docker network with ws://
         ws: true,
         changeOrigin: true,
         secure: false,
+        timeout: 120000,
       }
     }
   }
