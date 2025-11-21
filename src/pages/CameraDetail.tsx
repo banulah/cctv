@@ -104,14 +104,16 @@ export default function CameraDetail() {
     const video = videoRef.current
     // Use the selected quality stream URL
     let streamUrl: string
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
 
     if (camera.hls_url && camera.hls_url[quality]) {
       // Use the selected quality URL (high or low) from the backend API
-      streamUrl = camera.hls_url[quality]
+      const hlsPath = camera.hls_url[quality]
+      // If path is relative, prepend backend URL
+      streamUrl = hlsPath.startsWith('http') ? hlsPath : `${backendUrl}${hlsPath}`
     } else {
       // Fallback: construct URL (for backward compatibility)
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
-      streamUrl = `${backendUrl}/hls/cam/${camera.id}/${quality}/index.m3u8`
+      streamUrl = `${backendUrl}/hls/cam${camera.id}/${quality}/index.m3u8`
     }
 
     // Reset loading state when video element changes

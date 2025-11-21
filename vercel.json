@@ -4,6 +4,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/certificate-help.html",
+      "destination": "/certificate-help.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

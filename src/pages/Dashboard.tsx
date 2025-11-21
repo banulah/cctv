@@ -24,8 +24,8 @@ export default function Dashboard() {
     totalIdentities: 0
   })
   const [services, setServices] = useState<ServiceStatus[]>([
-    { name: 'Backend API', url: 'http://localhost:8000/docs', description: 'FastAPI', status: 'loading' },
-    { name: 'MediaMTX', url: 'http://localhost:8888', description: 'Streaming', status: 'loading' },
+    { name: 'Backend API', url: `${import.meta.env.VITE_BACKEND_URL}/health`, description: 'FastAPI', status: 'loading' },
+    { name: 'MediaMTX', url: `${import.meta.env.VITE_BACKEND_URL}/hls/`, description: 'Streaming', status: 'loading' },
     { name: 'Grafana', url: 'http://localhost:3000', description: 'Metrics', status: 'loading' },
     { name: 'Prometheus', url: 'http://localhost:9090', description: 'Monitoring', status: 'loading' },
     { name: 'MinIO', url: 'http://localhost:9001', description: 'Storage', status: 'loading' },

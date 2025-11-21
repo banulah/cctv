@@ -20,7 +20,13 @@ export default function Login() {
       await login(username, password)
       navigate('/')
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.')
+      // Check if error is due to certificate/network issues
+      const errorMsg = err.message || ''
+      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('certificate')) {
+        setError('Cannot connect to backend. You may need to accept the SSL certificate first.')
+      } else {
+        setError(errorMsg || 'Login failed. Please check your credentials.')
+      }
     } finally {
       setLoading(false)
     }
@@ -52,12 +58,21 @@ export default function Login() {
 
           {error && (
             <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
-              <div className="flex items-center">
+              <div className="flex items-center mb-2">
                 <svg className="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <p className="text-sm text-red-700">{error}</p>
               </div>
+              {error.includes('SSL certificate') && (
+                <a
+                  href="/certificate-help.html"
+                  target="_blank"
+                  className="text-xs text-blue-600 hover:text-blue-700 underline ml-7"
+                >
+                  → Click here for setup instructions
+                </a>
+              )}
             </div>
           )}
 
@@ -149,9 +164,14 @@ export default function Login() {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-xs text-blue-200">
-          Protected by enterprise-grade security
-        </p>
+        <div className="text-center space-y-2">
+          <p className="text-xs text-blue-200">
+            Protected by enterprise-grade security
+          </p>
+          <p className="text-xs text-blue-300">
+            First time? <a href="/certificate-help.html" target="_blank" className="underline hover:text-white">Certificate setup required →</a>
+          </p>
+        </div>
       </div>
     </div>
   )
