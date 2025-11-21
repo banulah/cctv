@@ -165,7 +165,49 @@ export const api = {
     return res.json()
   },
 
-  // Events
+  toggleRecognition: async (id: number): Promise<{ status: string; camera_id: number; enable_recognition: boolean; message: string }> => {
+    const res = await authenticatedFetch(`${API_BASE}/cameras/${id}/toggle-recognition`, {
+      method: 'POST'
+    })
+    if (!res.ok) {
+      const error = await res.json()
+      throw new Error(error.detail || 'Failed to toggle recognition')
+    }
+    return res.json()
+  },
+
+  toggleANPR: async (id: number): Promise<{ status: string; camera_id: number; enable_anpr: boolean; message: string }> => {
+    const res = await authenticatedFetch(`${API_BASE}/cameras/${id}/toggle-anpr`, {
+      method: 'POST'
+    })
+    if (!res.ok) {
+      const error = await res.json()
+      throw new Error(error.detail || 'Failed to toggle ANPR')
+    }
+    return res.json()
+  },
+
+  setRecognition: async (id: number, enable: boolean): Promise<{ status: string; camera_id: number; enable_recognition: boolean; message: string }> => {
+    const res = await authenticatedFetch(`${API_BASE}/cameras/${id}/set-recognition?enable=${enable}`, {
+      method: 'POST'
+    })
+    if (!res.ok) {
+      const error = await res.json()
+      throw new Error(error.detail || 'Failed to set recognition')
+    }
+    return res.json()
+  },
+
+  setANPR: async (id: number, enable: boolean): Promise<{ status: string; camera_id: number; enable_anpr: boolean; message: string }> => {
+    const res = await authenticatedFetch(`${API_BASE}/cameras/${id}/set-anpr?enable=${enable}`, {
+      method: 'POST'
+    })
+    if (!res.ok) {
+      const error = await res.json()
+      throw new Error(error.detail || 'Failed to set ANPR')
+    }
+    return res.json()
+  },
   getEvents: async (type?: string, camera_id?: number): Promise<Event[]> => {
     const params = new URLSearchParams()
     if (type) params.append('type', type)

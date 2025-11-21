@@ -90,8 +90,8 @@ export default function LiveWall() {
         })
       }, 5000)
 
-      // Use low quality stream for grid view (bandwidth efficient)
-      const relativeUrl = `/hls/cam/${cam.id}/low/index.m3u8`
+      // Use LOW quality for grid view (now includes AI detection overlays from Edge AI)
+      const relativeUrl = cam.hls_url?.low || `/hls/cam/${cam.id}/low/index.m3u8`
       // Use backend URL from environment config (for production) or current origin (for development with proxy)
       const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
       const hlsUrl = relativeUrl.startsWith('http')
@@ -113,18 +113,18 @@ export default function LiveWall() {
           enableWorker: true,
           lowLatencyMode: true,  // ENABLED for synchronized low-latency playback
 
-          // MINIMAL BUFFER - Optimized for real-time synchronization
-          maxBufferLength: 3,        // Only buffer 3 seconds (reduced from 10)
-          maxMaxBufferLength: 6,     // Max 6 seconds buffer (reduced from 20)
-          maxBufferSize: 3 * 1000 * 1000,  // 3MB buffer (reduced from 10MB)
-          maxBufferHole: 0.2,        // Small gap tolerance for sync
+          // MINIMAL BUFFER - Optimized for real-time A/V synchronization
+          maxBufferLength: 2,        // Only buffer 2 seconds for ultra-low latency
+          maxMaxBufferLength: 4,     // Max 4 seconds buffer
+          maxBufferSize: 2 * 1000 * 1000,  // 2MB buffer for tighter sync
+          maxBufferHole: 0.1,        // Very small gap tolerance for A/V sync
 
-          // ULTRA LOW LATENCY LIVE SYNC - Stay at live edge for synchronization
-          backBufferLength: 1,              // Keep minimal back buffer
-          liveSyncDurationCount: 1,         // Start 1 segment from live edge (~0.5s with 0.5s segments)
-          liveMaxLatencyDurationCount: 2,   // Jump forward if more than 2 segments behind (~1s)
+          // ULTRA LOW LATENCY LIVE SYNC - Stay at absolute live edge for A/V sync
+          backBufferLength: 0.5,            // Minimal back buffer (0.5s)
+          liveSyncDurationCount: 1,         // Start 1 segment from live edge for stability
+          liveMaxLatencyDurationCount: 4,   // Jump forward if more than 4 segments behind
           liveDurationInfinity: true,       // Treat as infinite for live
-          liveBackBufferLength: 1,          // 1 second live back buffer
+          liveBackBufferLength: 0.5,        // 0.5 second live back buffer
           highBufferWatchdogPeriod: 0.5,    // Check buffer every 0.5 seconds
 
           // Fragment loading with aggressive timeouts for low latency
@@ -282,8 +282,8 @@ export default function LiveWall() {
           if (retryCounts.current[cam.id] % 10 === 0) {
             console.log(`Retrying stream for ${cam.name} (attempt ${retryCounts.current[cam.id]})...`)
           }
-          // Use low quality stream for grid view
-          const relativeUrl = `/hls/cam/${cam.id}/low/index.m3u8`
+          // Use LOW quality for retry (now includes AI detection overlays from Edge AI)
+          const relativeUrl = cam.hls_url?.low || `/hls/cam/${cam.id}/low/index.m3u8`
           // Use backend URL from environment config (for production) or current origin (for development with proxy)
           const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
           const hlsUrl = relativeUrl.startsWith('http')
@@ -296,24 +296,24 @@ export default function LiveWall() {
             hlsInstances.current[cam.id] = null
           }
 
-          // Create new HLS instance with LOW LATENCY settings for synchronization
+          // Create new HLS instance with ULTRA LOW LATENCY settings for A/V sync
           const newHls = new Hls({
             debug: false,
             enableWorker: true,
             lowLatencyMode: true,  // ENABLED for synchronized low-latency playback
 
-            // MINIMAL BUFFER - Optimized for real-time synchronization
-            maxBufferLength: 3,        // Only buffer 3 seconds
-            maxMaxBufferLength: 6,     // Max 6 seconds buffer
-            maxBufferSize: 3 * 1000 * 1000,  // 3MB buffer
-            maxBufferHole: 0.2,        // Small gap tolerance for sync
+            // MINIMAL BUFFER - Optimized for real-time A/V synchronization
+            maxBufferLength: 2,        // Only buffer 2 seconds for ultra-low latency
+            maxMaxBufferLength: 4,     // Max 4 seconds buffer
+            maxBufferSize: 2 * 1000 * 1000,  // 2MB buffer for tighter sync
+            maxBufferHole: 0.1,        // Very small gap tolerance for A/V sync
 
-            // ULTRA LOW LATENCY LIVE SYNC - Stay at live edge
-            backBufferLength: 1,              // Keep minimal back buffer
-            liveSyncDurationCount: 1,         // Start 1 segment from live edge
-            liveMaxLatencyDurationCount: 2,   // Jump forward if more than 2 segments behind
+            // ULTRA LOW LATENCY LIVE SYNC - Stay at absolute live edge for A/V sync
+            backBufferLength: 0.5,            // Minimal back buffer (0.5s)
+            liveSyncDurationCount: 1,         // Start 1 segment from live edge for stability
+            liveMaxLatencyDurationCount: 4,   // Jump forward if more than 4 segments behind
             liveDurationInfinity: true,
-            liveBackBufferLength: 1,          // 1 second live back buffer
+            liveBackBufferLength: 0.5,        // 0.5 second live back buffer
             highBufferWatchdogPeriod: 0.5,    // Check buffer every 0.5 seconds
 
             // Fragment loading with aggressive timeouts
@@ -363,17 +363,33 @@ export default function LiveWall() {
           if (data.fatal) {
             console.error(`HLS error for ${cam.name}:`, data)
 
-            // Handle 404 errors (manifest not found) - don't retry indefinitely
+            // Handle 404 errors (manifest not found)
             if (data.details === 'manifestLoadError' && data.response?.code === 404) {
-              console.error(`Stream not available for ${cam.name} (404), stopping retries`)
-              setStreamErrors(prev => ({ ...prev, [cam.id]: 'Stream Not Available' }))
-              setOfflineCameras(prev => ({ ...prev, [cam.id]: true }))
-              setInitializingCameras(prev => ({ ...prev, [cam.id]: false }))
-              // Clean up to stop retry loop
-              if (hlsInstances.current[cam.id]) {
-                hlsInstances.current[cam.id]?.destroy()
-                hlsInstances.current[cam.id] = null
-              }
+              // Check if camera is in starting state (stream not ready yet)
+              setStartingStreams(prev => {
+                const isStarting = prev[cam.id]
+                if (isStarting) {
+                  // Stream is still starting, keep retrying silently
+                  console.log(`Stream starting for ${cam.name}, will retry in 2s...`)
+                  setTimeout(retryLoad, 2000)
+                } else {
+                  // Stream should be available but isn't - mark as error
+                  console.error(`Stream not available for ${cam.name} (404)`)
+                  setStreamErrors(prevErrors => ({ ...prevErrors, [cam.id]: 'Stream Not Available' }))
+                  setOfflineCameras(prevOffline => ({ ...prevOffline, [cam.id]: true }))
+                  setInitializingCameras(prevInit => {
+                    const newInit = { ...prevInit }
+                    delete newInit[cam.id]
+                    return newInit
+                  })
+                  // Clean up to stop retry loop
+                  if (hlsInstances.current[cam.id]) {
+                    hlsInstances.current[cam.id]?.destroy()
+                    hlsInstances.current[cam.id] = null
+                  }
+                }
+                return prev
+              })
               return
             }
 
@@ -516,8 +532,9 @@ export default function LiveWall() {
 
     setAddingCamera(true)
     try {
-      await api.addCamera(formData.name.trim(), formData.rtsp_url.trim())
+      const result = await api.addCamera(formData.name.trim(), formData.rtsp_url.trim())
       const cameraName = formData.name.trim()
+      const newCameraId = result.id
 
       setFormData({ name: '', rtsp_url: '' })
       setFormErrors({})
@@ -526,6 +543,16 @@ export default function LiveWall() {
       // Show success message
       setSuccessMessage(`Camera "${cameraName}" added! Stream is starting automatically...`)
       setTimeout(() => setSuccessMessage(null), 8000)
+
+      // Mark new camera as starting for 25 seconds (gives time for transcoding to initialize)
+      setStartingStreams(prev => ({ ...prev, [newCameraId]: true }))
+      setTimeout(() => {
+        setStartingStreams(prev => {
+          const newState = { ...prev }
+          delete newState[newCameraId]
+          return newState
+        })
+      }, 25000)
 
       // Reload cameras to show new camera
       loadCameras()
@@ -610,16 +637,18 @@ export default function LiveWall() {
             <h1 className="text-3xl font-bold text-gray-900">Live Wall</h1>
             <p className="mt-2 text-sm text-gray-600">Real-time camera feeds</p>
           </div>
-          <button
-            onClick={() => {
-              setShowAddCamera(!showAddCamera)
-              setFormData({ name: '', rtsp_url: '' })
-              setFormErrors({})
-            }}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            {showAddCamera ? 'Cancel' : '+ Add Camera'}
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => {
+                setShowAddCamera(!showAddCamera)
+                setFormData({ name: '', rtsp_url: '' })
+                setFormErrors({})
+              }}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              {showAddCamera ? 'Cancel' : '+ Add Camera'}
+            </button>
+          </div>
         </div>
 
         {/* Success notification */}

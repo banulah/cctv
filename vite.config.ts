@@ -23,8 +23,16 @@ export default defineConfig({
         target: 'http://mediamtx:8888',  // Use internal Docker network
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/hls/, ''),
-        timeout: 300000,
-        proxyTimeout: 300000,
+        timeout: 30000,
+        proxyTimeout: 30000,
+        configure: (proxy, options) => {
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            proxyReq.setTimeout(30000)
+          })
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            proxyRes.setTimeout(30000)
+          })
+        }
       },
       '/ws': {
         target: 'ws://backend:8000',  // Use internal Docker network with ws://

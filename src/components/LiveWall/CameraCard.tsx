@@ -28,6 +28,59 @@ function CameraCardComponent({
   onCameraUpdated
 }: CameraCardProps) {
   const [isFlipped, setIsFlipped] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isTogglingRecognition, setIsTogglingRecognition] = useState(false)
+  const [isTogglingANPR, setIsTogglingANPR] = useState(false)
+  const [toggleError, setToggleError] = useState<string | null>(null)
+
+  const handleToggleRecognition = async () => {
+    setIsTogglingRecognition(true)
+    setToggleError(null)
+    try {
+      const { api } = await import('../../services/api')
+      await api.toggleRecognition(camera.id)
+      // Refresh camera data
+      onCameraUpdated()
+    } catch (error: any) {
+      setToggleError(error.message || 'Failed to toggle recognition')
+      console.error('Failed to toggle recognition:', error)
+    } finally {
+      setIsTogglingRecognition(false)
+    }
+  }
+
+  const handleToggleANPR = async () => {
+    setIsTogglingANPR(true)
+    setToggleError(null)
+    try {
+      const { api } = await import('../../services/api')
+      await api.toggleANPR(camera.id)
+      // Refresh camera data
+      onCameraUpdated()
+    } catch (error: any) {
+      setToggleError(error.message || 'Failed to toggle ANPR')
+      console.error('Failed to toggle ANPR:', error)
+    } finally {
+      setIsTogglingANPR(false)
+    }
+  }
+
+  const handleDeleteCamera = async () => {
+    setIsDeleting(true)
+    try {
+      const { api } = await import('../../services/api')
+      await api.deleteCamera(camera.id)
+      // Refresh camera list
+      onCameraUpdated()
+      setShowDeleteConfirm(false)
+    } catch (error: any) {
+      alert(error.message || 'Failed to delete camera')
+      console.error('Failed to delete camera:', error)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   return (
     <div className="relative w-full" style={{ perspective: '1000px', minHeight: '300px' }}>
@@ -111,7 +164,8 @@ function CameraCardComponent({
               <div className="absolute inset-0 flex items-center justify-center bg-gray-950 z-10">
                 <div className="text-center">
                   <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent"></div>
-                  <p className="text-white mt-3 text-sm">Starting stream...</p>
+                  <p className="text-white mt-3 text-sm font-medium">Starting transcoding...</p>
+                  <p className="text-gray-400 mt-1 text-xs">This may take 15-20 seconds</p>
                 </div>
               </div>
             )}
@@ -292,29 +346,50 @@ function CameraCardComponent({
               {/* Features */}
               <div className="space-y-2 border-t border-gray-700 pt-3">
                 <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Features</h4>
+                {toggleError && (
+                  <div className="bg-red-900 border border-red-700 rounded p-2 text-xs text-red-300">
+                    {toggleError}
+                  </div>
+                )}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between p-2 bg-gray-800 rounded">
+                  <button
+                    onClick={handleToggleRecognition}
+                    disabled={isTogglingRecognition}
+                    className="w-full flex items-center justify-between p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+                  >
                     <div className="flex items-center space-x-2">
                       <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
                       <span className="text-sm text-gray-300">Face Recognition</span>
                     </div>
-                    <span className={`text-xs font-semibold ${camera.enable_recognition ? 'text-green-400' : 'text-gray-500'}`}>
-                      {camera.enable_recognition ? 'ON' : 'OFF'}
+                    <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                      camera.enable_recognition 
+                        ? 'bg-green-900/50 text-green-400' 
+                        : 'bg-gray-700 text-gray-500'
+                    }`}>
+                      {isTogglingRecognition ? '...' : (camera.enable_recognition ? 'ON' : 'OFF')}
                     </span>
-                  </div>
-                  <div className="flex items-center justify-between p-2 bg-gray-800 rounded">
+                  </button>
+                  <button
+                    onClick={handleToggleANPR}
+                    disabled={isTogglingANPR}
+                    className="w-full flex items-center justify-between p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+                  >
                     <div className="flex items-center space-x-2">
                       <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <span className="text-sm text-gray-300">ANPR (License Plate)</span>
                     </div>
-                    <span className={`text-xs font-semibold ${camera.enable_anpr ? 'text-green-400' : 'text-gray-500'}`}>
-                      {camera.enable_anpr ? 'ON' : 'OFF'}
+                    <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                      camera.enable_anpr 
+                        ? 'bg-green-900/50 text-green-400' 
+                        : 'bg-gray-700 text-gray-500'
+                    }`}>
+                      {isTogglingANPR ? '...' : (camera.enable_anpr ? 'ON' : 'OFF')}
                     </span>
-                  </div>
+                  </button>
                 </div>
               </div>
 
@@ -376,6 +451,64 @@ function CameraCardComponent({
                       <span>Start Stream</span>
                     </button>
                   )}
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setShowDeleteConfirm(true)
+                    }}
+                    className="flex items-center justify-center space-x-2 w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded transition-colors text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span>Delete Camera</span>
+                  </button>
+
+                  {/* Delete Confirmation Modal */}
+                  {showDeleteConfirm && (
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setShowDeleteConfirm(false)}>
+                      <div className="fixed inset-0 bg-black/50"></div>
+                      <div 
+                        className="relative bg-gray-800 rounded-lg shadow-lg p-4 max-w-sm w-full mx-4 border border-red-600"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <h3 className="text-lg font-semibold text-white mb-2">Delete Camera?</h3>
+                        <p className="text-gray-300 text-sm mb-4">
+                          Are you sure you want to permanently delete <span className="font-semibold">{camera.name}</span>?
+                        </p>
+                        <p className="text-gray-400 text-xs mb-4">
+                          This will:
+                          <ul className="list-disc list-inside mt-2 space-y-1">
+                            <li>Stop the camera stream</li>
+                            <li>Delete all recorded observations</li>
+                            <li>Delete all events from this camera</li>
+                            <li>Cannot be undone</li>
+                          </ul>
+                        </p>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => setShowDeleteConfirm(false)}
+                            disabled={isDeleting}
+                            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors disabled:opacity-50 text-sm"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              handleDeleteCamera()
+                            }}
+                            disabled={isDeleting}
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded transition-colors disabled:opacity-50 text-sm font-medium"
+                          >
+                            {isDeleting ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -393,6 +526,8 @@ export const CameraCard = memo(CameraCardComponent, (prevProps, nextProps) => {
     prevProps.camera.id === nextProps.camera.id &&
     prevProps.camera.name === nextProps.camera.name &&
     prevProps.camera.online === nextProps.camera.online &&
+    prevProps.camera.enable_recognition === nextProps.camera.enable_recognition &&
+    prevProps.camera.enable_anpr === nextProps.camera.enable_anpr &&
     prevProps.streamError === nextProps.streamError &&
     prevProps.isInitializing === nextProps.isInitializing &&
     prevProps.isStarting === nextProps.isStarting &&

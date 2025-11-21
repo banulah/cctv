@@ -10,7 +10,7 @@ export default function CameraDetail() {
   const [camera, setCamera] = useState<Camera | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [quality, setQuality] = useState<'high' | 'low'>('high')
+  const [quality, setQuality] = useState<'high' | 'low'>('low')  // Default to low for better performance
   const [isMuted, setIsMuted] = useState(true)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -22,7 +22,6 @@ export default function CameraDetail() {
   const [isVideoLoading, setIsVideoLoading] = useState(true)
   const [hasVideoStarted, setHasVideoStarted] = useState(false)
   const errorCountRef = useRef<number>(0)
-  const [qualityFallbackNotice, setQualityFallbackNotice] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -103,9 +102,17 @@ export default function CameraDetail() {
     if (!camera || !videoRef.current) return
 
     const video = videoRef.current
-    // Use backend URL from environment config (for production) or current origin (for development with proxy)
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
-    const streamUrl = `${backendUrl}/hls/cam/${camera.id}/${quality}/index.m3u8`
+    // Use the selected quality stream URL
+    let streamUrl: string
+
+    if (camera.hls_url && camera.hls_url[quality]) {
+      // Use the selected quality URL (high or low) from the backend API
+      streamUrl = camera.hls_url[quality]
+    } else {
+      // Fallback: construct URL (for backward compatibility)
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
+      streamUrl = `${backendUrl}/hls/cam/${camera.id}/${quality}/index.m3u8`
+    }
 
     // Reset loading state when video element changes
     setIsVideoLoading(true)
@@ -145,25 +152,20 @@ export default function CameraDetail() {
 
     if (Hls.isSupported()) {
       const hls = new Hls({
-        // BALANCED CONFIGURATION FOR STABLE STREAMING
-        lowLatencyMode: false,           // Disabled for better stability
+        // SIMPLE QUALITY SELECTION (no adaptive bitrate - user chooses quality)
         enableWorker: true,
+        maxLoadingDelay: 4,
 
-        // Balanced buffering for stability
-        maxBufferLength: 10,             // 10 seconds buffer for stability
-        maxMaxBufferLength: 20,          // Max 20 seconds buffer
-        maxBufferSize: 10 * 1000 * 1000, // 10MB buffer
-        maxBufferHole: 0.5,              // Allow larger gaps
+        // Balanced buffering
+        maxBufferLength: 30,
+        maxMaxBufferLength: 600,
+        maxBufferSize: 60 * 1000 * 1000,
+        maxBufferHole: 0.5,
 
-        // Balanced live sync - stay reasonably close to live
-        backBufferLength: 5,             // Keep 5 seconds back buffer
-        liveSyncDurationCount: 1,        // Start 1 segment from live (~3 seconds) - REDUCED FOR LOW LATENCY
-        liveMaxLatencyDurationCount: 3,  // Jump if 3+ segments behind (~9s) - REDUCED TO STAY LIVE
-        liveBackBufferLength: 3,         // 3 seconds live back buffer - REDUCED
-
-        // FORCE LOW LATENCY - Always seek to live edge
-        liveDurationInfinity: true,       // Treat live as infinite duration
-        highBufferWatchdogPeriod: 1,      // Check buffer every 1 second
+        // Live sync for low latency
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 10,
+        liveDurationInfinity: true,
 
         // More retries for stability
         manifestLoadingMaxRetry: 6,
@@ -271,17 +273,7 @@ export default function CameraDetail() {
 
           // Handle 404 errors - stream not available
           if (data.details === 'manifestLoadError' && data.response?.code === 404) {
-            // Auto-fallback: if high quality fails multiple times, switch to low
-            if (quality === 'high' && errorCountRef.current >= 3) {
-              console.log('High quality failed multiple times, auto-switching to low quality')
-              setQualityFallbackNotice('High quality unavailable. Switched to low quality.')
-              setQuality('low')
-              errorCountRef.current = 0
-              // Clear notice after 5 seconds
-              setTimeout(() => setQualityFallbackNotice(null), 5000)
-              return
-            }
-            setError(`${quality === 'high' ? 'High' : 'Low'} quality stream not available${quality === 'high' ? '. Will auto-switch to low quality...' : '.'}`)
+            setError('Stream not available. Please check camera connection.')
             // Retry after delay
             setTimeout(() => {
               if (camera && videoRef.current) {
@@ -295,15 +287,6 @@ export default function CameraDetail() {
           if (data.details === 'levelParsingError' || data.details === 'levelLoadError') {
             console.warn('Playlist parsing error, attempting recovery...')
             errorCountRef.current += 1
-            // Auto-fallback after multiple parsing errors on high quality
-            if (quality === 'high' && errorCountRef.current >= 5) {
-              console.log('High quality has persistent parsing errors, switching to low quality')
-              setQualityFallbackNotice('High quality unstable. Switched to low quality.')
-              setQuality('low')
-              errorCountRef.current = 0
-              setTimeout(() => setQualityFallbackNotice(null), 5000)
-              return
-            }
             // Retry setup after short delay
             setTimeout(() => {
               if (camera && videoRef.current) {
@@ -313,27 +296,18 @@ export default function CameraDetail() {
             return
           }
 
-          // Handle other fatal errors with potential fallback
+          // Handle other fatal errors
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               console.error('Fatal network error')
-              // Auto-fallback on repeated network errors with high quality
-              if (quality === 'high' && errorCountRef.current >= 4) {
-                console.log('Repeated network errors on high quality, switching to low quality')
-                setQualityFallbackNotice('Network issues with high quality. Switched to low quality.')
-                setQuality('low')
-                errorCountRef.current = 0
-                setTimeout(() => setQualityFallbackNotice(null), 5000)
-              } else {
-                setError('Network error - stream unavailable. Retrying...')
-                // Retry after delay
-                setTimeout(() => {
-                  setError(null)
-                  if (camera && videoRef.current) {
-                    setupVideo()
-                  }
-                }, 3000)
-              }
+              setError('Network error - stream unavailable. Retrying...')
+              // Retry after delay
+              setTimeout(() => {
+                setError(null)
+                if (camera && videoRef.current) {
+                  setupVideo()
+                }
+              }, 3000)
               break
             case Hls.ErrorTypes.MEDIA_ERROR:
               console.error('Fatal media error')
@@ -397,16 +371,6 @@ export default function CameraDetail() {
   return (
     <Layout>
       <div className="p-6 max-w-screen-2xl mx-auto">
-        {/* Quality Fallback Notice */}
-        {qualityFallbackNotice && (
-          <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-3">
-            <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-yellow-800 text-sm font-medium">{qualityFallbackNotice}</p>
-          </div>
-        )}
-
         {/* Header */}
         <div className="flex items-center justify-between mb-2 ">
           <div className="flex items-center gap-4">
@@ -429,7 +393,7 @@ export default function CameraDetail() {
             </div>
           </div>
 
-          {/* Quality Toggle */}
+          {/* Quality Toggle with AI Overlays */}
           <div className="flex items-center gap-3">
             <div className="flex bg-gray-100 rounded-lg p-1">
               <button
@@ -440,7 +404,7 @@ export default function CameraDetail() {
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Low (360p)
+                Low (360p + AI)
               </button>
               <button
                 onClick={() => setQuality('high')}
@@ -450,7 +414,7 @@ export default function CameraDetail() {
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                High (1620p)
+                High ({quality === 'high' ? 'Original' : '2880x1620'} + AI)
               </button>
             </div>
             <button
@@ -490,10 +454,10 @@ export default function CameraDetail() {
                     <div className="text-center text-white p-6">
                       <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
                       <div className="text-base font-medium mb-2">
-                        Loading {quality === 'high' ? 'High Quality' : 'Low Quality'} Stream...
+                        Loading {quality === 'high' ? 'High Quality' : 'Low Quality'} Stream with AI Overlays...
                       </div>
                       <div className="text-sm text-gray-300">
-                        {quality === 'high' ? '2880x1620' : '640x360'} @ H.264
+                        {quality === 'high' ? '2880x1620' : '640x360'} with AI detection overlays @ H.264
                       </div>
                     </div>
                   </div>
@@ -517,7 +481,7 @@ export default function CameraDetail() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Quality:</span>
-                  <span className="font-medium text-gray-900 capitalize">{quality}</span>
+                  <span className="font-medium text-gray-900">{quality === 'high' ? 'High + AI' : 'Low + AI'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Resolution:</span>
