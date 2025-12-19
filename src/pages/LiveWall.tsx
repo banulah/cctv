@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { api, Camera } from '../services/api'
+import { api, Camera, BASE_URL } from '../services/api'
 import Hls from 'hls.js'
 import Layout from '../components/Layout'
 import { CameraCard, CameraGrid } from '../components/LiveWall'
@@ -15,7 +15,7 @@ export default function LiveWall() {
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({})
   const hlsInstances = useRef<{ [key: number]: Hls | null }>({})
   const retryCounts = useRef<{ [key: number]: number }>({})
-  const maxRetries = 5  // Stop retrying after 5 attempts for 404 errors
+  const maxRetries = 30  // Retry for ~90 seconds (30 * 3s) to allow Edge service to start stream
   const initializedCameras = useRef<Set<number>>(new Set())
 
   // Camera addition state
@@ -93,7 +93,7 @@ export default function LiveWall() {
       // Use LOW quality for grid view (now includes AI detection overlays from Edge AI)
       const relativeUrl = cam.hls_url?.low || `/hls/cam/${cam.id}/low/index.m3u8`
       // Use backend URL from environment config (for production) or current origin (for development with proxy)
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
+      const backendUrl = BASE_URL
       const hlsUrl = relativeUrl.startsWith('http')
         ? relativeUrl
         : `${backendUrl}${relativeUrl}`
@@ -208,6 +208,10 @@ export default function LiveWall() {
             return newErrors
           })
           setInitializingCameras(prev => ({ ...prev, [cam.id]: false }))
+
+          // Reset retry count on successful play
+          retryCounts.current[cam.id] = 0
+
           // Update camera online status in local state when video starts playing
           setCameras((prev: Camera[]) => prev.map((c: Camera) =>
             c.id === cam.id ? { ...c, online: true } : c
@@ -285,7 +289,7 @@ export default function LiveWall() {
           // Use LOW quality for retry (now includes AI detection overlays from Edge AI)
           const relativeUrl = cam.hls_url?.low || `/hls/cam/${cam.id}/low/index.m3u8`
           // Use backend URL from environment config (for production) or current origin (for development with proxy)
-          const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
+          const backendUrl = BASE_URL
           const hlsUrl = relativeUrl.startsWith('http')
             ? relativeUrl
             : `${backendUrl}${relativeUrl}`
@@ -363,33 +367,13 @@ export default function LiveWall() {
           if (data.fatal) {
             console.error(`HLS error for ${cam.name}:`, data)
 
-            // Handle 404 errors (manifest not found)
+            // Handle 404 errors (manifest not found) - Common during startup
             if (data.details === 'manifestLoadError' && data.response?.code === 404) {
-              // Check if camera is in starting state (stream not ready yet)
-              setStartingStreams(prev => {
-                const isStarting = prev[cam.id]
-                if (isStarting) {
-                  // Stream is still starting, keep retrying silently
-                  console.log(`Stream starting for ${cam.name}, will retry in 2s...`)
-                  setTimeout(retryLoad, 2000)
-                } else {
-                  // Stream should be available but isn't - mark as error
-                  console.error(`Stream not available for ${cam.name} (404)`)
-                  setStreamErrors(prevErrors => ({ ...prevErrors, [cam.id]: 'Stream Not Available' }))
-                  setOfflineCameras(prevOffline => ({ ...prevOffline, [cam.id]: true }))
-                  setInitializingCameras(prevInit => {
-                    const newInit = { ...prevInit }
-                    delete newInit[cam.id]
-                    return newInit
-                  })
-                  // Clean up to stop retry loop
-                  if (hlsInstances.current[cam.id]) {
-                    hlsInstances.current[cam.id]?.destroy()
-                    hlsInstances.current[cam.id] = null
-                  }
-                }
-                return prev
-              })
+              console.log(`Stream not ready for ${cam.name} (404), retrying in 3s...`)
+
+              // Don't show error overlay immediately for 404s, just retry
+              // Only mark as error if we've retried many times (handled by retryCounts check above)
+              setTimeout(retryLoad, 3000)
               return
             }
 
@@ -532,30 +516,23 @@ export default function LiveWall() {
 
     setAddingCamera(true)
     try {
-      const result = await api.addCamera(formData.name.trim(), formData.rtsp_url.trim())
+      await api.addCamera(formData.name.trim(), formData.rtsp_url.trim())
       const cameraName = formData.name.trim()
-      const newCameraId = result.id
 
       setFormData({ name: '', rtsp_url: '' })
       setFormErrors({})
       setShowAddCamera(false)
 
       // Show success message
-      setSuccessMessage(`Camera "${cameraName}" added! Stream is starting automatically...`)
-      setTimeout(() => setSuccessMessage(null), 8000)
+      setSuccessMessage(`Camera "${cameraName}" added! It will appear shortly once the edge service connects.`)
+      setTimeout(() => setSuccessMessage(null), 5000)
 
-      // Mark new camera as starting for 25 seconds (gives time for transcoding to initialize)
-      setStartingStreams(prev => ({ ...prev, [newCameraId]: true }))
+      // Reload cameras quickly to show the new camera in list
+      setLoading(true)
       setTimeout(() => {
-        setStartingStreams(prev => {
-          const newState = { ...prev }
-          delete newState[newCameraId]
-          return newState
-        })
-      }, 25000)
-
-      // Reload cameras to show new camera
-      loadCameras()
+        loadCameras()
+        setLoading(false)
+      }, 2000)
     } catch (error: any) {
       console.error('Failed to add camera:', error)
       alert(error.message || 'Failed to add camera')
@@ -685,9 +662,8 @@ export default function LiveWall() {
                     setFormData({ ...formData, name: e.target.value })
                     if (formErrors.name) setFormErrors({ ...formErrors, name: undefined })
                   }}
-                  className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                    formErrors.name ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${formErrors.name ? 'border-red-500' : 'border-gray-300'
+                    }`}
                   placeholder="e.g., Gate 1, Main Entrance, Front Door"
                   required
                 />
@@ -706,9 +682,8 @@ export default function LiveWall() {
                     setFormData({ ...formData, rtsp_url: e.target.value })
                     if (formErrors.rtsp_url) setFormErrors({ ...formErrors, rtsp_url: undefined })
                   }}
-                  className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                    formErrors.rtsp_url ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${formErrors.rtsp_url ? 'border-red-500' : 'border-gray-300'
+                    }`}
                   placeholder="rtsp://username:password@ip:port/stream"
                   required
                 />

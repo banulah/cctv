@@ -20,13 +20,9 @@ export default function Login() {
       await login(username, password)
       navigate('/')
     } catch (err: any) {
-      // Check if error is due to certificate/network issues
-      const errorMsg = err.message || ''
-      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('certificate')) {
-        setError('Cannot connect to backend. You may need to accept the SSL certificate first.')
-      } else {
-        setError(errorMsg || 'Login failed. Please check your credentials.')
-      }
+      // Display the error message from AuthContext
+      const errorMsg = err.message || 'Login failed. Please check your credentials.'
+      setError(errorMsg)
     } finally {
       setLoading(false)
     }
@@ -58,21 +54,24 @@ export default function Login() {
 
           {error && (
             <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
-              <div className="flex items-center mb-2">
-                <svg className="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-start">
+                <svg className="w-5 h-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <p className="text-sm text-red-700">{error}</p>
+                <div className="flex-1">
+                  <p className="text-sm text-red-700">{error}</p>
+                  {(error.includes('HTTPS') || error.includes('SSL') || error.includes('certificate') || error.includes('Cannot connect')) && (
+                    <div className="mt-2 text-xs text-gray-600 bg-white rounded p-2">
+                      <p className="font-semibold mb-1">Quick fix:</p>
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Ensure backend URL starts with <code className="bg-gray-100 px-1">https://</code></li>
+                        <li>Use Cloudflare Tunnel, ngrok, or proper SSL certificate</li>
+                        <li>Configure VITE_BACKEND_URL in Vercel environment variables</li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
-              {error.includes('SSL certificate') && (
-                <a
-                  href="/certificate-help.html"
-                  target="_blank"
-                  className="text-xs text-blue-600 hover:text-blue-700 underline ml-7"
-                >
-                  → Click here for setup instructions
-                </a>
-              )}
             </div>
           )}
 

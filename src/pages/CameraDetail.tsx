@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api, Camera, Event } from '../services/api'
+import { api, Camera, Event, BASE_URL } from '../services/api'
 import Layout from '../components/Layout'
 import Hls from 'hls.js'
 
@@ -35,10 +35,10 @@ export default function CameraDetail() {
     return () => {
       const video = videoRef.current
       if (video) {
-        video.removeEventListener('loadstart', () => {})
-        video.removeEventListener('canplay', () => {})
-        video.removeEventListener('playing', () => {})
-        video.removeEventListener('waiting', () => {})
+        video.removeEventListener('loadstart', () => { })
+        video.removeEventListener('canplay', () => { })
+        video.removeEventListener('playing', () => { })
+        video.removeEventListener('waiting', () => { })
       }
       if (hlsRef.current) {
         hlsRef.current.destroy()
@@ -104,7 +104,7 @@ export default function CameraDetail() {
     const video = videoRef.current
     // Use the selected quality stream URL
     let streamUrl: string
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
+    const backendUrl = BASE_URL
 
     if (camera.hls_url && camera.hls_url[quality]) {
       // Use the selected quality URL (high or low) from the backend API
@@ -388,9 +388,8 @@ export default function CameraDetail() {
               <h1 className="text-2xl font-bold text-gray-900">{camera.name}</h1>
               <p className="text-sm text-gray-500">Camera ID: {camera.id}</p>
             </div>
-            <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-              camera.online ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-            }`}>
+            <div className={`px-3 py-1 rounded-full text-sm font-medium ${camera.online ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}>
               {camera.online ? '● Live' : '● Offline'}
             </div>
           </div>
@@ -400,21 +399,19 @@ export default function CameraDetail() {
             <div className="flex bg-gray-100 rounded-lg p-1">
               <button
                 onClick={() => setQuality('low')}
-                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                  quality === 'low'
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${quality === 'low'
                     ? 'bg-white text-gray-900 shadow'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 Low (360p + AI)
               </button>
               <button
                 onClick={() => setQuality('high')}
-                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                  quality === 'high'
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${quality === 'high'
                     ? 'bg-white text-gray-900 shadow'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 High ({quality === 'high' ? 'Original' : '2880x1620'} + AI)
               </button>
@@ -509,11 +506,10 @@ export default function CameraDetail() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Buffer:</span>
-                  <span className={`font-medium ${
-                    liveStats.bufferLength > 5 ? 'text-green-600' :
-                    liveStats.bufferLength > 2 ? 'text-yellow-600' :
-                    'text-red-600'
-                  }`}>
+                  <span className={`font-medium ${liveStats.bufferLength > 5 ? 'text-green-600' :
+                      liveStats.bufferLength > 2 ? 'text-yellow-600' :
+                        'text-red-600'
+                    }`}>
                     {liveStats.bufferLength.toFixed(1)}s
                   </span>
                 </div>
@@ -527,11 +523,10 @@ export default function CameraDetail() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Dropped Frames:</span>
-                  <span className={`font-medium ${
-                    liveStats.droppedFrames === 0 ? 'text-green-600' :
-                    liveStats.droppedFrames < 10 ? 'text-yellow-600' :
-                    'text-red-600'
-                  }`}>
+                  <span className={`font-medium ${liveStats.droppedFrames === 0 ? 'text-green-600' :
+                      liveStats.droppedFrames < 10 ? 'text-yellow-600' :
+                        'text-red-600'
+                    }`}>
                     {liveStats.droppedFrames}
                   </span>
                 </div>
@@ -550,13 +545,12 @@ export default function CameraDetail() {
                   recentEvents.map((event) => (
                     <div
                       key={event.id}
-                      className={`p-2 rounded border text-xs ${
-                        event.type === 'person'
+                      className={`p-2 rounded border text-xs ${event.type === 'person'
                           ? 'bg-blue-50 border-blue-200'
                           : event.type === 'anpr'
-                          ? 'bg-purple-50 border-purple-200'
-                          : 'bg-gray-50 border-gray-200'
-                      }`}
+                            ? 'bg-purple-50 border-purple-200'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
                     >
                       <div className="flex items-start justify-between mb-1">
                         <div className="flex items-center gap-1">

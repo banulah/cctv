@@ -1,3 +1,5 @@
+import { WS_BASE } from './api'
+
 type EventCallback = (event: any) => void
 
 class WebSocketService {
@@ -7,10 +9,9 @@ class WebSocketService {
   private maxReconnectAttempts = 5
 
   connect() {
-    // Use environment variable for WebSocket URL
-    const wsUrl = import.meta.env.VITE_WS_URL
-      ? `${import.meta.env.VITE_WS_URL}/alerts`
-      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/alerts`
+    // Use the consolidated WS_BASE from api.ts
+    // This handles environment variables and dynamic fallbacks correctly
+    const wsUrl = `${WS_BASE}/alerts`
 
     console.log('[WebSocket] Attempting to connect to:', wsUrl)
     this.ws = new WebSocket(wsUrl)

@@ -1,4 +1,5 @@
 import { useState, memo } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { Camera } from '../../services/api'
 
@@ -120,21 +121,36 @@ function CameraCardComponent({
                 )}
               </div>
 
-              {/* Flip Button */}
-              <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setIsFlipped(!isFlipped)
-                }}
-                className="text-white hover:bg-white/20 rounded p-1 transition-colors"
-                title="Show camera settings"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </button>
+              <div className="flex items-center space-x-2">
+                {/* Playback Button */}
+                <Link
+                  to={`/playback/${camera.id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-white hover:bg-white/20 rounded p-1 transition-colors"
+                  title="View recordings"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </Link>
+
+                {/* Flip Button */}
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setIsFlipped(!isFlipped)
+                  }}
+                  className="text-white hover:bg-white/20 rounded p-1 transition-colors"
+                  title="Show camera settings"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -363,11 +379,10 @@ function CameraCardComponent({
                       </svg>
                       <span className="text-sm text-gray-300">Face Recognition</span>
                     </div>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded ${
-                      camera.enable_recognition 
-                        ? 'bg-green-900/50 text-green-400' 
-                        : 'bg-gray-700 text-gray-500'
-                    }`}>
+                    <span className={`text-xs font-semibold px-2 py-1 rounded ${camera.enable_recognition
+                      ? 'bg-green-900/50 text-green-400'
+                      : 'bg-gray-700 text-gray-500'
+                      }`}>
                       {isTogglingRecognition ? '...' : (camera.enable_recognition ? 'ON' : 'OFF')}
                     </span>
                   </button>
@@ -382,11 +397,10 @@ function CameraCardComponent({
                       </svg>
                       <span className="text-sm text-gray-300">ANPR (License Plate)</span>
                     </div>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded ${
-                      camera.enable_anpr 
-                        ? 'bg-green-900/50 text-green-400' 
-                        : 'bg-gray-700 text-gray-500'
-                    }`}>
+                    <span className={`text-xs font-semibold px-2 py-1 rounded ${camera.enable_anpr
+                      ? 'bg-green-900/50 text-green-400'
+                      : 'bg-gray-700 text-gray-500'
+                      }`}>
                       {isTogglingANPR ? '...' : (camera.enable_anpr ? 'ON' : 'OFF')}
                     </span>
                   </button>
@@ -465,32 +479,36 @@ function CameraCardComponent({
                     <span>Delete Camera</span>
                   </button>
 
-                  {/* Delete Confirmation Modal */}
-                  {showDeleteConfirm && (
-                    <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setShowDeleteConfirm(false)}>
-                      <div className="fixed inset-0 bg-black/50"></div>
-                      <div 
-                        className="relative bg-gray-800 rounded-lg shadow-lg p-4 max-w-sm w-full mx-4 border border-red-600"
+                  {/* Delete Confirmation Modal - Rendered via Portal to escape 3D transform context */}
+                  {showDeleteConfirm && createPortal(
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center font-sans" onClick={() => setShowDeleteConfirm(false)}>
+                      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm"></div>
+                      <div
+                        className="relative bg-gray-800 rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4 border border-red-600 animate-in fade-in zoom-in duration-200"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <h3 className="text-lg font-semibold text-white mb-2">Delete Camera?</h3>
+                        <h3 className="text-xl font-bold text-white mb-2 flex items-center">
+                          <svg className="w-6 h-6 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          Delete Camera?
+                        </h3>
                         <p className="text-gray-300 text-sm mb-4">
-                          Are you sure you want to permanently delete <span className="font-semibold">{camera.name}</span>?
+                          Are you sure you want to permanently delete <span className="font-semibold text-white">{camera.name}</span>?
                         </p>
-                        <p className="text-gray-400 text-xs mb-4">
-                          This will:
-                          <ul className="list-disc list-inside mt-2 space-y-1">
-                            <li>Stop the camera stream</li>
-                            <li>Delete all recorded observations</li>
-                            <li>Delete all events from this camera</li>
-                            <li>Cannot be undone</li>
+                        <div className="bg-red-900/20 border border-red-900/50 rounded p-3 mb-6">
+                          <p className="text-red-200 text-xs font-semibold mb-2 uppercase tracking-wide">Warning: This action cannot be undone</p>
+                          <ul className="list-disc list-inside text-gray-400 text-xs space-y-1 ml-1">
+                            <li>Stops camera stream immediately</li>
+                            <li>Deletes all recorded observations</li>
+                            <li>Removes all detected events history</li>
                           </ul>
-                        </p>
-                        <div className="flex space-x-2">
+                        </div>
+                        <div className="flex space-x-3">
                           <button
                             onClick={() => setShowDeleteConfirm(false)}
                             disabled={isDeleting}
-                            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors disabled:opacity-50 text-sm"
+                            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
                           >
                             Cancel
                           </button>
@@ -501,13 +519,22 @@ function CameraCardComponent({
                               handleDeleteCamera()
                             }}
                             disabled={isDeleting}
-                            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded transition-colors disabled:opacity-50 text-sm font-medium"
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 text-sm font-bold shadow-lg shadow-red-900/20"
                           >
-                            {isDeleting ? 'Deleting...' : 'Delete'}
+                            {isDeleting ? (
+                              <span className="flex items-center justify-center">
+                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Deleting...
+                              </span>
+                            ) : 'Delete Permanently'}
                           </button>
                         </div>
                       </div>
-                    </div>
+                    </div>,
+                    document.body
                   )}
                 </div>
               </div>

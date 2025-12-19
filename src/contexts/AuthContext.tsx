@@ -77,8 +77,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('user', JSON.stringify(data.user))
 
       setUser(data.user)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error)
+
+      // Provide specific error messages for common SSL/connection issues
+      if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+        // Check if backend URL is using HTTP
+        if (API_BASE.startsWith('http://')) {
+          throw new Error('Backend is using HTTP but frontend is HTTPS. Backend must use HTTPS to avoid mixed content errors. Please configure a secure backend URL.')
+        }
+        throw new Error('Cannot connect to backend server. Please ensure: (1) Backend is running, (2) Backend URL is correct, (3) Backend has valid HTTPS certificate, (4) CORS is configured properly.')
+      }
+
       throw error
     }
   }

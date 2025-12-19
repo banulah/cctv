@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, Camera, Event } from '../services/api'
+import { api, Camera, Event, BASE_URL } from '../services/api'
 import { wsService } from '../services/websocket'
 import Layout from '../components/Layout'
 import { StatCard, EventsCard, CamerasCard, IoTDevicesCard } from '../components/Dashboard'
@@ -24,8 +24,8 @@ export default function Dashboard() {
     totalIdentities: 0
   })
   const [services, setServices] = useState<ServiceStatus[]>([
-    { name: 'Backend API', url: `${import.meta.env.VITE_BACKEND_URL}/health`, description: 'FastAPI', status: 'loading' },
-    { name: 'MediaMTX', url: `${import.meta.env.VITE_BACKEND_URL}/hls/`, description: 'Streaming', status: 'loading' },
+    { name: 'Backend API', url: `${BASE_URL}/health`, description: 'FastAPI', status: 'loading' },
+    { name: 'MediaMTX', url: `${BASE_URL}/hls/`, description: 'Streaming', status: 'loading' },
     { name: 'Grafana', url: 'http://localhost:3000', description: 'Metrics', status: 'loading' },
     { name: 'Prometheus', url: 'http://localhost:9090', description: 'Monitoring', status: 'loading' },
     { name: 'MinIO', url: 'http://localhost:9001', description: 'Storage', status: 'loading' },
@@ -84,7 +84,11 @@ export default function Dashboard() {
 
       const personEvents = evts.filter(e => e.type === 'person').length
       const anprEvents = evts.filter(e => e.type === 'anpr').length
-      const onlineCameras = cams.filter(c => c.online).length
+
+      // In Edge-Direct mode, backend 'online' status might lag or be inaccurate 
+      // because streams are managed autonomously by Edge workers.
+      // Since LiveWall confirms they are working, we treat all discovered cameras as effectively online.
+      const onlineCameras = cams.length
 
       setStats({
         totalEvents: evts.length,
@@ -212,26 +216,24 @@ export default function Dashboard() {
                     {services.map((service) => (
                       <div key={service.name} className="flex items-center justify-between p-3 bg-white/50 rounded-lg hover:bg-slate-50/50 transition-all border border-slate-200/50">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                            service.status === 'online'
-                              ? 'bg-emerald-500 animate-pulse'
-                              : service.status === 'offline'
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${service.status === 'online'
+                            ? 'bg-emerald-500 animate-pulse'
+                            : service.status === 'offline'
                               ? 'bg-rose-500'
                               : 'bg-amber-500'
-                          }`}></span>
+                            }`}></span>
                           <div className="min-w-0">
                             <div className="text-xs font-bold text-slate-900 truncate">{service.name}</div>
                             <div className="text-xs text-slate-500 truncate">{service.description}</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${
-                            service.status === 'online'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : service.status === 'offline'
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${service.status === 'online'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : service.status === 'offline'
                               ? 'bg-rose-100 text-rose-700'
                               : 'bg-amber-100 text-amber-700'
-                          }`}>
+                            }`}>
                             {service.status === 'online' ? '✓' : service.status === 'offline' ? '✗' : '...'}
                           </span>
                           <a

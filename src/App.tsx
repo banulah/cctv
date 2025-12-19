@@ -8,6 +8,7 @@ import CameraDetail from './pages/CameraDetail'
 import Events from './pages/Events'
 import Identities from './pages/Identities'
 import IoTDevices from './pages/IoTDevices'
+import Playback from './pages/Playback'
 
 function App() {
   return (
@@ -63,6 +64,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <IoTDevices />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/playback/:id"
+            element={
+              <ProtectedRoute>
+                <Playback />
               </ProtectedRoute>
             }
           />

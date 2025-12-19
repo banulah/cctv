@@ -1,12 +1,20 @@
 // Use environment variable for API base URL
-export const API_BASE = import.meta.env.VITE_BACKEND_URL
-  ? `${import.meta.env.VITE_BACKEND_URL}/api`
-  : '/api'
+// When deploying to Vercel, this variable must be set in the Vercel Dashboard
+export const BASE_URL = (import.meta.env.VITE_BACKEND_URL || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, '');
+
+// API Base: e.g. https://api.yourdomain.com/api
+export const API_BASE = `${BASE_URL}/api`;
+
+// WebSocket Base: Derived from Backend URL if not explicitly provided
+// e.g. wss://api.yourdomain.com/ws
+export const WS_BASE = import.meta.env.VITE_WS_URL ||
+  BASE_URL.replace(/^http/, 'ws') + '/ws';
 
 // Debug: Log environment configuration
 console.log('[API Config]', {
-  VITE_BACKEND_URL: import.meta.env.VITE_BACKEND_URL,
+  BASE_URL: BASE_URL,
   API_BASE: API_BASE,
+  WS_BASE: WS_BASE,
   MODE: import.meta.env.MODE,
   PROD: import.meta.env.PROD
 })
@@ -81,6 +89,14 @@ export interface HotlistEntry {
   valid_to: string | null
 }
 
+export interface ProvisionalIdentity {
+  provisional_id: string
+  obs_count: number
+  first_seen: string
+  last_seen: string
+  sample_event_id: number
+}
+
 export const api = {
   // Cameras
   getCameras: async (): Promise<Camera[]> => {
@@ -101,6 +117,15 @@ export const api = {
     if (!res.ok) {
       const error = await res.json()
       throw new Error(error.detail || 'Failed to add camera')
+    }
+    return res.json()
+  },
+
+  // Provisionals
+  getProvisionals: async (limit: number = 100): Promise<ProvisionalIdentity[]> => {
+    const res = await fetch(`${API_BASE}/provisionals?limit=${limit}`)
+    if (!res.ok) {
+      throw new Error('Failed to fetch provisionals')
     }
     return res.json()
   },
