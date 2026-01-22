@@ -14,7 +14,7 @@ export default function LiveWall() {
   const [offlineCameras, setOfflineCameras] = useState<{ [key: number]: boolean }>({})
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({})
   const hlsInstances = useRef<{ [key: number]: Hls | null }>({})
-  const retryCounts = useRef<{ [key: number]: number }>({})
+  const retryCounts = useRef<{ [key: string]: number | ReturnType<typeof setInterval> }>({})  // Support both retry counts and interval IDs
   const maxRetries = 30  // Retry for ~90 seconds (30 * 3s) to allow Edge service to start stream
   const initializedCameras = useRef<Set<number>>(new Set())
 
@@ -49,8 +49,15 @@ export default function LiveWall() {
 
     return () => {
       clearInterval(interval)
-      // Cleanup all HLS instances on unmount
+      // Cleanup all HLS instances and playlist refresh intervals on unmount
       Object.values(hlsInstances.current).forEach(hls => hls?.destroy())
+      // Clear all playlist refresh intervals and watchdog timers
+      Object.keys(retryCounts.current).forEach(key => {
+        if (key.startsWith('interval_') || key.startsWith('watchdog_')) {
+          clearInterval(retryCounts.current[key])
+          delete retryCounts.current[key]
+        }
+      })
     }
   }, [loadCameras])
 
@@ -64,6 +71,18 @@ export default function LiveWall() {
         hlsInstances.current[id]?.destroy()
         delete hlsInstances.current[id]
         delete videoRefs.current[id]
+        // Clear playlist refresh interval for removed camera
+        const intervalKey = `interval_${id}`
+        if (retryCounts.current[intervalKey]) {
+          clearInterval(retryCounts.current[intervalKey] as ReturnType<typeof setInterval>)
+          delete retryCounts.current[intervalKey]
+        }
+        // Clear watchdog interval for removed camera
+        const watchdogKey = `watchdog_${id}`
+        if (retryCounts.current[watchdogKey]) {
+          clearInterval(retryCounts.current[watchdogKey] as ReturnType<typeof setInterval>)
+          delete retryCounts.current[watchdogKey]
+        }
         initializedCameras.current.delete(id)
       }
     })
@@ -81,22 +100,41 @@ export default function LiveWall() {
       // Mark camera as initializing (will be cleared when video starts playing)
       setInitializingCameras(prev => ({ ...prev, [cam.id]: true }))
 
-      // Fallback: Clear initializing state after 5 seconds even if playing event doesn't fire
+      // Fallback: Clear initializing state after 3 seconds even if playing event doesn't fire
+      // Faster timeout for better UX - stream should start within 3 seconds
       setTimeout(() => {
         setInitializingCameras(prev => {
           const newState = { ...prev }
           delete newState[cam.id]
           return newState
         })
-      }, 5000)
+        // Also try to ensure video is playing
+        if (videoRefs.current[cam.id] && videoRefs.current[cam.id]!.paused) {
+          videoRefs.current[cam.id]!.play().catch(e => console.warn(`Fallback play failed for ${cam.name}:`, e))
+        }
+      }, 3000)
 
       // Use LOW quality for grid view (now includes AI detection overlays from Edge AI)
-      const relativeUrl = cam.hls_url?.low || `/hls/cam/${cam.id}/low/index.m3u8`
+      const relativeUrl = cam.hls_url?.low || `/hls/cam/${cam.id}/source/index.m3u8`
       // Use backend URL from environment config (for production) or current origin (for development with proxy)
       const backendUrl = BASE_URL
+
+      // Get authentication token from localStorage
+      const token = localStorage.getItem('auth_token')
+
+      // AGGRESSIVE CACHE BUSTING: Add timestamp to force fresh playlist loads
+      // This ensures live feeds always show current video, not cached old frames
+      const timestamp = Date.now()
+      const separator = relativeUrl.includes('?') ? '&' : '?'
+
+      // Add authentication token to HLS URL
+      const relativeUrlWithAuth = token
+        ? `${relativeUrl}${separator}token=${token}&_t=${timestamp}`
+        : `${relativeUrl}${separator}_t=${timestamp}`
+
       const hlsUrl = relativeUrl.startsWith('http')
-        ? relativeUrl
-        : `${backendUrl}${relativeUrl}`
+        ? (token ? `${relativeUrl}${separator}token=${token}&_t=${timestamp}` : `${relativeUrl}${separator}_t=${timestamp}`)
+        : `${backendUrl}${relativeUrlWithAuth}`
 
       console.log(`Loading HLS stream for ${cam.name}: ${hlsUrl}`)
 
@@ -120,12 +158,15 @@ export default function LiveWall() {
           maxBufferHole: 0.1,        // Very small gap tolerance for A/V sync
 
           // ULTRA LOW LATENCY LIVE SYNC - Stay at absolute live edge for A/V sync
-          backBufferLength: 0.5,            // Minimal back buffer (0.5s)
+          backBufferLength: 0.3,            // Minimal back buffer (0.3s) - ULTRA LOW
           liveSyncDurationCount: 1,         // Start 1 segment from live edge for stability
-          liveMaxLatencyDurationCount: 4,   // Jump forward if more than 4 segments behind
+          liveMaxLatencyDurationCount: 2,   // Jump forward if more than 2 segments behind (REDUCED from 4)
           liveDurationInfinity: true,       // Treat as infinite for live
-          liveBackBufferLength: 0.5,        // 0.5 second live back buffer
-          highBufferWatchdogPeriod: 0.5,    // Check buffer every 0.5 seconds
+          liveBackBufferLength: 0.3,        // 0.3 second live back buffer (REDUCED from 0.5s)
+          highBufferWatchdogPeriod: 0.3,    // Check buffer every 0.3 seconds (INCREASED frequency)
+
+          // CRITICAL: Start from live edge, not beginning of playlist
+          startPosition: -1,                // -1 = start from live edge
 
           // Fragment loading with aggressive timeouts for low latency
           maxFragLookUpTolerance: 0.1,
@@ -145,38 +186,89 @@ export default function LiveWall() {
         hls.loadSource(hlsUrl)
         hls.attachMedia(video)
 
-        // AGGRESSIVE SYNC TO LIVE EDGE - Keep all streams synchronized
+        // AGGRESSIVE SYNC TO LIVE EDGE - Keep all streams synchronized and current
         hls.on(Hls.Events.FRAG_LOADED, () => {
           if (video && !video.paused) {
             const bufferEnd = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0
             const currentTime = video.currentTime
             const latency = bufferEnd - currentTime
 
-            // AGGRESSIVE: If we're more than 2 seconds behind live, jump forward
-            // This keeps all cameras at the same live edge for perfect sync
-            if (latency > 2) {
-              console.log(`${cam.name}: Latency ${latency.toFixed(1)}s, seeking to live edge`)
-              video.currentTime = bufferEnd - 0.5  // Stay 0.5s from live edge
+            // ULTRA AGGRESSIVE: If we're more than 1.5 seconds behind live, jump forward immediately
+            // This prevents old cached segments from playing and keeps display real-time
+            if (latency > 1.5) {
+              const targetTime = bufferEnd - 0.3  // Stay 0.3s from live edge (ultra low latency)
+              console.log(`${cam.name}: Latency ${latency.toFixed(1)}s, jumping from ${currentTime.toFixed(1)}s to ${targetTime.toFixed(1)}s`)
+              video.currentTime = targetTime
             }
           }
         })
+
+        // FORCE PLAYLIST REFRESH: Periodically reload manifest to ensure fresh segments
+        // This prevents showing old cached playlists and ensures real-time display
+        const playlistRefreshInterval = setInterval(() => {
+          if (hlsInstances.current[cam.id] === hls && !hls.media?.paused) {
+            // Force HLS to reload the level (playlist) by starting load
+            // This bypasses browser cache and fetches the latest playlist
+            try {
+              hls.startLoad(-1)  // -1 = start from live edge
+            } catch (e) {
+              // Ignore errors during refresh
+            }
+          }
+        }, 3000)  // Refresh every 3 seconds to stay current
+
+        // Store interval for cleanup
+        if (!retryCounts.current[`interval_${cam.id}`]) {
+          retryCounts.current[`interval_${cam.id}`] = playlistRefreshInterval as any
+        }
 
         // Track playback state
         let isPlaying = false
         let lastPlayTime = Date.now()
 
+        // Add timeout for manifest loading - retry if takes too long
+        const manifestTimeout = setTimeout(() => {
+          if (initializedCameras.current.has(cam.id) && !hls.media?.paused) {
+            return // Stream is playing, ignore timeout
+          }
+          console.warn(`${cam.name}: Manifest load timeout, retrying...`)
+          retryLoad()
+        }, 5000)
+
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          clearTimeout(manifestTimeout)  // Clear timeout on success
           console.log(`HLS manifest parsed for ${cam.name}`)
           // Disable audio track immediately after manifest is parsed
           // This prevents audio loading for muted grid view videos
           hls.audioTrack = -1
           console.log(`Audio disabled for ${cam.name}`)
 
+          // CRITICAL FIX: Jump to live edge IMMEDIATELY on load
+          // Without this, HLS.js starts from the first segment in the playlist,
+          // causing old frames to play first and then "catching up" with fast playback
+          // Force start from the absolute live edge by seeking to end of buffer
+          const seekToLive = () => {
+            if (video.buffered.length > 0) {
+              const liveEdge = video.buffered.end(video.buffered.length - 1)
+              video.currentTime = liveEdge - 0.5  // Start 0.5s from live edge
+              console.log(`${cam.name}: Jumped to live edge at ${liveEdge.toFixed(1)}s`)
+            }
+          }
+
+          // Seek to live immediately after first buffer is available
+          const onLoadedData = () => {
+            seekToLive()
+            video.removeEventListener('loadeddata', onLoadedData)
+          }
+          video.addEventListener('loadeddata', onLoadedData)
+
           // Play with proper error handling for browser power-saving
           const playPromise = video.play()
           if (playPromise !== undefined) {
             playPromise.then(() => {
               console.log(`Playback started for ${cam.name}`)
+              // Ensure we're at live edge after play starts
+              setTimeout(seekToLive, 100)
             }).catch(err => {
               console.error(`Play error for ${cam.name}:`, err)
               // If AbortError (browser power-saving), retry playback
@@ -207,7 +299,11 @@ export default function LiveWall() {
             delete newErrors[cam.id]
             return newErrors
           })
-          setInitializingCameras(prev => ({ ...prev, [cam.id]: false }))
+          setInitializingCameras(prev => {
+            const newState = { ...prev }
+            delete newState[cam.id]
+            return newState
+          })
 
           // Reset retry count on successful play
           retryCounts.current[cam.id] = 0
@@ -274,10 +370,16 @@ export default function LiveWall() {
             setStreamErrors(prev => ({ ...prev, [cam.id]: 'Camera Offline' }))
             setInitializingCameras(prev => ({ ...prev, [cam.id]: false }))
 
-            // Clean up HLS instance to stop retry loop
+            // Clean up HLS instance and playlist refresh interval to stop retry loop
             if (hlsInstances.current[cam.id]) {
               hlsInstances.current[cam.id]?.destroy()
               hlsInstances.current[cam.id] = null
+            }
+            // Clear playlist refresh interval
+            const intervalKey = `interval_${cam.id}`
+            if (retryCounts.current[intervalKey]) {
+              clearInterval(retryCounts.current[intervalKey] as ReturnType<typeof setInterval>)
+              delete retryCounts.current[intervalKey]
             }
             return  // Stop retrying
           }
@@ -290,9 +392,22 @@ export default function LiveWall() {
           const relativeUrl = cam.hls_url?.low || `/hls/cam/${cam.id}/low/index.m3u8`
           // Use backend URL from environment config (for production) or current origin (for development with proxy)
           const backendUrl = BASE_URL
+
+          // Get authentication token from localStorage for retry
+          const token = localStorage.getItem('auth_token')
+
+          // AGGRESSIVE CACHE BUSTING: Add timestamp to force fresh playlist loads on retry
+          const timestamp = Date.now()
+          const separator = relativeUrl.includes('?') ? '&' : '?'
+
+          // Add authentication token to retry URL (CRITICAL FIX for 401 errors)
+          const relativeUrlWithAuth = token
+            ? `${relativeUrl}${separator}token=${token}&_t=${timestamp}`
+            : `${relativeUrl}${separator}_t=${timestamp}`
+
           const hlsUrl = relativeUrl.startsWith('http')
-            ? relativeUrl
-            : `${backendUrl}${relativeUrl}`
+            ? (token ? `${relativeUrl}${separator}token=${token}&_t=${timestamp}` : `${relativeUrl}${separator}_t=${timestamp}`)
+            : `${backendUrl}${relativeUrlWithAuth}`
 
           // Destroy existing instance
           if (hlsInstances.current[cam.id]) {
@@ -319,6 +434,9 @@ export default function LiveWall() {
             liveDurationInfinity: true,
             liveBackBufferLength: 0.5,        // 0.5 second live back buffer
             highBufferWatchdogPeriod: 0.5,    // Check buffer every 0.5 seconds
+
+            // CRITICAL: Start from live edge on retry too
+            startPosition: -1,                // -1 = start from live edge
 
             // Fragment loading with aggressive timeouts
             maxFragLookUpTolerance: 0.1,
@@ -350,7 +468,28 @@ export default function LiveWall() {
               delete newErrors[cam.id]
               return newErrors
             })
-            videoRefs.current[cam.id]?.play().catch(console.error)
+
+            const retryVideo = videoRefs.current[cam.id]
+            if (retryVideo) {
+              // Jump to live edge on retry too
+              const seekToLiveRetry = () => {
+                if (retryVideo.buffered.length > 0) {
+                  const liveEdge = retryVideo.buffered.end(retryVideo.buffered.length - 1)
+                  retryVideo.currentTime = liveEdge - 0.5
+                  console.log(`${cam.name} (retry): Jumped to live edge at ${liveEdge.toFixed(1)}s`)
+                }
+              }
+
+              const onLoadedDataRetry = () => {
+                seekToLiveRetry()
+                retryVideo.removeEventListener('loadeddata', onLoadedDataRetry)
+              }
+              retryVideo.addEventListener('loadeddata', onLoadedDataRetry)
+
+              retryVideo.play().then(() => {
+                setTimeout(seekToLiveRetry, 100)
+              }).catch(console.error)
+            }
           })
 
           newHls.on(Hls.Events.ERROR, (_event, data) => {
@@ -451,6 +590,11 @@ export default function LiveWall() {
             } else if (data.details === 'levelParsingError') {
               // Non-fatal level parsing error - try to continue
               console.warn(`Non-fatal playlist parsing error for ${cam.name}, continuing...`)
+            } else if (data.details === 'fragLoadError' && data.response?.code === 404) {
+              // Fragment 404 - segment not found (stream restarted, segment expired)
+              console.warn(`Segment 404 for ${cam.name}, destroying and recreating HLS instance...`)
+              // Complete HLS instance recreation to reset all state
+              setTimeout(retryLoad, 1000)  // Destroy and recreate after 1 second
             } else if (!data.details?.includes('buffer')) {
               // Log non-buffer errors to avoid console spam
               console.warn(`Non-fatal HLS error for ${cam.name}:`, data.details)
@@ -459,6 +603,52 @@ export default function LiveWall() {
         })
 
         hlsInstances.current[cam.id] = hls
+
+        // Watchdog: Auto-restart frozen streams AND force live edge jump every 10 seconds
+        let lastCurrentTime = 0
+        const watchdogInterval = setInterval(() => {
+          if (!videoRefs.current[cam.id]) {
+            clearInterval(watchdogInterval)
+            return
+          }
+
+          const video = videoRefs.current[cam.id]
+          if (!video) return
+
+          // Check if video is frozen (not playing and not buffering)
+          if (video.paused && video.readyState >= 2 && hlsInstances.current[cam.id]) {
+            console.warn(`${cam.name} is frozen (paused), attempting auto-restart...`)
+            retryLoad()
+            return
+          }
+
+          // Check if video hasn't advanced (frozen frame)
+          if (video.currentTime === lastCurrentTime && video.currentTime > 0 && !video.paused) {
+            console.warn(`${cam.name} frame frozen at ${video.currentTime.toFixed(1)}s, restarting...`)
+            retryLoad()
+            return
+          }
+          lastCurrentTime = video.currentTime
+
+          // CRITICAL FIX: Force jump to live edge every 10 seconds to prevent old frame playback
+          // This prevents HLS.js from buffering and playing cached old segments
+          if (video.buffered.length > 0 && hlsInstances.current[cam.id]) {
+            const bufferEnd = video.buffered.end(video.buffered.length - 1)
+            const currentPosition = video.currentTime
+            const latency = bufferEnd - currentPosition
+
+            // If more than 3 seconds behind live edge, force jump forward
+            if (latency > 3.0) {
+              const targetPosition = bufferEnd - 0.5
+              console.warn(`${cam.name} is ${latency.toFixed(1)}s behind live edge, jumping from ${currentPosition.toFixed(1)}s to ${targetPosition.toFixed(1)}s`)
+              video.currentTime = targetPosition
+            }
+          }
+        }, 10000)
+
+        // Store watchdog interval for cleanup
+        retryCounts.current[`watchdog_${cam.id}`] = watchdogInterval as any
+
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         // Native HLS support (Safari)
         video.src = hlsUrl

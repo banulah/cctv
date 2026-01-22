@@ -74,28 +74,31 @@ export default function Dashboard() {
     try {
       setIsLoading(true)
       const [cams, evts, ids] = await Promise.all([
-        api.getCameras(),
-        api.getEvents(),
-        api.getIdentities()
+        api.getCameras().catch(() => []),
+        api.getEvents().catch(() => []),
+        api.getIdentities().catch(() => [])
       ])
 
-      setCameras(cams)
-      setEvents(evts.slice(0, 30)) // Show 30 latest events instead of 10
+      // Ensure arrays before processing
+      const cameras = Array.isArray(cams) ? cams : []
+      const events = Array.isArray(evts) ? evts : []
+      const identities = Array.isArray(ids) ? ids : []
 
-      const personEvents = evts.filter(e => e.type === 'person').length
-      const anprEvents = evts.filter(e => e.type === 'anpr').length
+      setCameras(cameras)
+      setEvents(events.slice(0, 30)) // Show 30 latest events instead of 10
 
-      // In Edge-Direct mode, backend 'online' status might lag or be inaccurate 
-      // because streams are managed autonomously by Edge workers.
-      // Since LiveWall confirms they are working, we treat all discovered cameras as effectively online.
-      const onlineCameras = cams.length
+      const personEvents = events.filter(e => e.type === 'person').length
+      const anprEvents = events.filter(e => e.type === 'anpr').length
+
+      // Count cameras that are actually online (not just total cameras)
+      const onlineCameras = cameras.filter(c => c.online).length
 
       setStats({
-        totalEvents: evts.length,
+        totalEvents: events.length,
         personEvents,
         anprEvents,
         onlineCameras,
-        totalIdentities: ids.length
+        totalIdentities: identities.length
       })
     } catch (error) {
       console.error('Failed to load dashboard data:', error)
@@ -107,16 +110,18 @@ export default function Dashboard() {
   // Load only events for WebSocket updates - no full page reload
   const loadEventsOnly = async () => {
     try {
-      const evts = await api.getEvents()
-      setEvents(evts.slice(0, 30)) // Show 30 latest events
+      const evts = await api.getEvents().catch(() => [])
+      const events = Array.isArray(evts) ? evts : []
+
+      setEvents(events.slice(0, 30)) // Show 30 latest events
 
       // Update stats for events only
-      const personEvents = evts.filter(e => e.type === 'person').length
-      const anprEvents = evts.filter(e => e.type === 'anpr').length
+      const personEvents = events.filter(e => e.type === 'person').length
+      const anprEvents = events.filter(e => e.type === 'anpr').length
 
       setStats(prev => ({
         ...prev,
-        totalEvents: evts.length,
+        totalEvents: events.length,
         personEvents,
         anprEvents
       }))

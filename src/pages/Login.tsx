@@ -60,13 +60,23 @@ export default function Login() {
                 </svg>
                 <div className="flex-1">
                   <p className="text-sm text-red-700">{error}</p>
-                  {(error.includes('HTTPS') || error.includes('SSL') || error.includes('certificate') || error.includes('Cannot connect')) && (
+                  {error.includes('Cannot connect') && !error.includes('Mixed content') && (
                     <div className="mt-2 text-xs text-gray-600 bg-white rounded p-2">
                       <p className="font-semibold mb-1">Quick fix:</p>
                       <ul className="list-disc list-inside space-y-1">
-                        <li>Ensure backend URL starts with <code className="bg-gray-100 px-1">https://</code></li>
-                        <li>Use Cloudflare Tunnel, ngrok, or proper SSL certificate</li>
-                        <li>Configure VITE_BACKEND_URL in Vercel environment variables</li>
+                        <li>Verify backend is running and accessible</li>
+                        <li>Check the backend URL is correct</li>
+                        <li>Ensure CORS is configured on the backend</li>
+                      </ul>
+                    </div>
+                  )}
+                  {error.includes('Mixed content') && (
+                    <div className="mt-2 text-xs text-gray-600 bg-white rounded p-2">
+                      <p className="font-semibold mb-1">Quick fix:</p>
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Use Cloudflare Tunnel for free HTTPS</li>
+                        <li>Or use ngrok with HTTPS</li>
+                        <li>Or deploy backend with proper SSL certificate</li>
                       </ul>
                     </div>
                   )}

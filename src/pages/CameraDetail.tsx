@@ -11,7 +11,7 @@ export default function CameraDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [quality, setQuality] = useState<'high' | 'low'>('low')  // Default to low for better performance
-  const [isMuted, setIsMuted] = useState(true)
+  const [isMuted, setIsMuted] = useState(false)  // Audio enabled by default on detail page
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const hlsRef = useRef<Hls | null>(null)
   const [streamInfo, setStreamInfo] = useState<{ resolution: string, fps: number, bitrate: string }>({ resolution: '...', fps: 0, bitrate: '...' })
@@ -92,9 +92,16 @@ export default function CameraDetail() {
     if (!camera) return
     try {
       const events = await api.getRecentEvents(camera.id, 10)
-      setRecentEvents(events)
+      // Ensure events is an array before setting state
+      if (Array.isArray(events)) {
+        setRecentEvents(events)
+      } else {
+        console.warn('Events response is not an array:', events)
+        setRecentEvents([])
+      }
     } catch (err) {
       console.error('Failed to load events:', err)
+      setRecentEvents([])
     }
   }
 
@@ -106,14 +113,28 @@ export default function CameraDetail() {
     let streamUrl: string
     const backendUrl = BASE_URL
 
+    // Get authentication token from localStorage
+    const token = localStorage.getItem('auth_token')
+
     if (camera.hls_url && camera.hls_url[quality]) {
       // Use the selected quality URL (high or low) from the backend API
       const hlsPath = camera.hls_url[quality]
       // If path is relative, prepend backend URL
-      streamUrl = hlsPath.startsWith('http') ? hlsPath : `${backendUrl}${hlsPath}`
+      const baseStreamUrl = hlsPath.startsWith('http') ? hlsPath : `${backendUrl}${hlsPath}`
+
+      // CRITICAL: Add authentication token and cache busting timestamp
+      const timestamp = Date.now()
+      const separator = baseStreamUrl.includes('?') ? '&' : '?'
+      streamUrl = token
+        ? `${baseStreamUrl}${separator}token=${token}&_t=${timestamp}`
+        : `${baseStreamUrl}${separator}_t=${timestamp}`
     } else {
       // Fallback: construct URL (for backward compatibility)
-      streamUrl = `${backendUrl}/hls/cam${camera.id}/${quality}/index.m3u8`
+      const baseStreamUrl = `${backendUrl}/hls/cam${camera.id}/${quality}/index.m3u8`
+      const timestamp = Date.now()
+      streamUrl = token
+        ? `${baseStreamUrl}?token=${token}&_t=${timestamp}`
+        : `${baseStreamUrl}?_t=${timestamp}`
     }
 
     // Reset loading state when video element changes
@@ -157,6 +178,7 @@ export default function CameraDetail() {
         // SIMPLE QUALITY SELECTION (no adaptive bitrate - user chooses quality)
         enableWorker: true,
         maxLoadingDelay: 4,
+        lowLatencyMode: true,  // Enable low latency for live streams
 
         // Balanced buffering
         maxBufferLength: 30,
@@ -168,6 +190,9 @@ export default function CameraDetail() {
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 10,
         liveDurationInfinity: true,
+
+        // CRITICAL: Start from live edge, not beginning
+        startPosition: -1,  // -1 = start from live edge
 
         // More retries for stability
         manifestLoadingMaxRetry: 6,
@@ -211,7 +236,27 @@ export default function CameraDetail() {
             bitrate: `${(level.bitrate / 1000000).toFixed(1)} Mbps`
           })
         }
-        video.play().catch(err => console.error('Play error:', err))
+
+        // CRITICAL FIX: Jump to live edge IMMEDIATELY on load
+        const seekToLive = () => {
+          if (video.buffered.length > 0) {
+            const liveEdge = video.buffered.end(video.buffered.length - 1)
+            video.currentTime = liveEdge - 0.5  // Start 0.5s from live edge
+            console.log(`Camera ${camera.name}: Jumped to live edge at ${liveEdge.toFixed(1)}s`)
+          }
+        }
+
+        // Seek to live immediately after first buffer is available
+        const onLoadedData = () => {
+          seekToLive()
+          video.removeEventListener('loadeddata', onLoadedData)
+        }
+        video.addEventListener('loadeddata', onLoadedData)
+
+        video.play().then(() => {
+          // Ensure we're at live edge after play starts
+          setTimeout(seekToLive, 100)
+        }).catch(err => console.error('Play error:', err))
       })
 
       // Reset error count when playback starts successfully

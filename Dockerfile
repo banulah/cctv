@@ -5,7 +5,9 @@ COPY package.json ./
 RUN npm install
 
 COPY . .
-RUN npm run build
+# Use production mode for Docker build
+ENV NODE_ENV=production
+RUN npm run build -- --mode production
 
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html

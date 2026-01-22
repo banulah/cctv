@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, Event, Camera, HotlistEntry } from '../services/api'
+import { api, Event, Camera, HotlistEntry, BASE_URL } from '../services/api'
 import { wsService } from '../services/websocket'
 import Layout from '../components/Layout'
 
@@ -60,11 +60,12 @@ export default function Events() {
 
   const loadData = async () => {
     const [cams, evts] = await Promise.all([
-      api.getCameras(),
-      api.getEvents()
+      api.getCameras().catch(() => []),
+      api.getEvents().catch(() => [])
     ])
-    setCameras(cams)
-    setEvents(evts)
+    // Ensure arrays before setting state
+    setCameras(Array.isArray(cams) ? cams : [])
+    setEvents(Array.isArray(evts) ? evts : [])
     loadHotlist()
   }
 
@@ -74,18 +75,32 @@ export default function Events() {
         filters.type || undefined,
         filters.camera_id ? parseInt(filters.camera_id) : undefined
       )
-      setEvents(data)
+      // Ensure data is an array before setting state
+      if (Array.isArray(data)) {
+        setEvents(data)
+      } else {
+        console.warn('Events response is not an array:', data)
+        setEvents([])
+      }
     } catch (error) {
       console.error('Failed to load events:', error)
+      setEvents([])
     }
   }
 
   const loadHotlist = async () => {
     try {
       const data = await api.getHotlist()
-      setHotlistEntries(data)
+      // Ensure data is an array before setting state
+      if (Array.isArray(data)) {
+        setHotlistEntries(data)
+      } else {
+        console.warn('Hotlist response is not an array:', data)
+        setHotlistEntries([])
+      }
     } catch (error) {
       console.error('Failed to load hotlist:', error)
+      setHotlistEntries([])
     }
   }
 
@@ -264,10 +279,11 @@ export default function Events() {
                               <>
                                 <img
                                   src={event.type === 'person'
-                                    ? `/api/media/snapshot/${event.payload.obs_id}`
-                                    : `/api/media/snapshot/${event.id}`}
+                                    ? `${BASE_URL}/api/media/snapshot/${event.payload.obs_id}`
+                                    : `${BASE_URL}/api/media/snapshot/${event.id}`}
                                   alt="Snapshot"
                                   className="w-full h-full object-cover"
+                                  crossOrigin="use-credentials"
                                   onError={(e) => {
                                     // Hide image and show icon on error
                                     e.currentTarget.classList.add('hidden')

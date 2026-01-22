@@ -123,7 +123,7 @@ export const api = {
 
   // Provisionals
   getProvisionals: async (limit: number = 100): Promise<ProvisionalIdentity[]> => {
-    const res = await fetch(`${API_BASE}/provisionals?limit=${limit}`)
+    const res = await authenticatedFetch(`${API_BASE}/provisionals?limit=${limit}`)
     if (!res.ok) {
       throw new Error('Failed to fetch provisionals')
     }
@@ -154,7 +154,7 @@ export const api = {
   },
 
   startCameraStream: async (id: number): Promise<{ status: string; path: string; message?: string }> => {
-    const res = await fetch(`${API_BASE}/cameras/${id}/start-stream`, {
+    const res = await authenticatedFetch(`${API_BASE}/cameras/${id}/start-stream`, {
       method: 'POST'
     })
     if (!res.ok) {
@@ -170,7 +170,7 @@ export const api = {
   },
 
   stopStream: async (id: number): Promise<void> => {
-    const res = await fetch(`${API_BASE}/cameras/${id}/stop-stream`, {
+    const res = await authenticatedFetch(`${API_BASE}/cameras/${id}/stop-stream`, {
       method: 'POST'
     })
     if (!res.ok) {
@@ -180,7 +180,7 @@ export const api = {
   },
 
   restartStream: async (id: number): Promise<{ status: string; path: string; message?: string }> => {
-    const res = await fetch(`${API_BASE}/cameras/${id}/restart-stream`, {
+    const res = await authenticatedFetch(`${API_BASE}/cameras/${id}/restart-stream`, {
       method: 'POST'
     })
     if (!res.ok) {
@@ -237,7 +237,7 @@ export const api = {
     const params = new URLSearchParams()
     if (type) params.append('type', type)
     if (camera_id) params.append('camera_id', camera_id.toString())
-    const res = await fetch(`${API_BASE}/events?${params}`)
+    const res = await authenticatedFetch(`${API_BASE}/events?${params}`)
     return res.json()
   },
 
@@ -246,18 +246,18 @@ export const api = {
     params.append('limit', limit.toString())
     if (camera_id) params.append('camera_id', camera_id.toString())
     if (type) params.append('type', type)
-    const res = await fetch(`${API_BASE}/events/recent?${params}`)
+    const res = await authenticatedFetch(`${API_BASE}/events/recent?${params}`)
     return res.json()
   },
 
   // Identities
   getIdentities: async (): Promise<Identity[]> => {
-    const res = await fetch(`${API_BASE}/identities`)
+    const res = await authenticatedFetch(`${API_BASE}/identities`)
     return res.json()
   },
 
   createIdentity: async (data: Partial<Identity>): Promise<Identity> => {
-    const res = await fetch(`${API_BASE}/identities`, {
+    const res = await authenticatedFetch(`${API_BASE}/identities`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -266,12 +266,12 @@ export const api = {
   },
 
   getIdentity: async (id: string): Promise<Identity> => {
-    const res = await fetch(`${API_BASE}/identities/${id}`)
+    const res = await authenticatedFetch(`${API_BASE}/identities/${id}`)
     return res.json()
   },
 
   updateIdentity: async (id: string, data: Partial<Identity>): Promise<Identity> => {
-    const res = await fetch(`${API_BASE}/identities/${id}`, {
+    const res = await authenticatedFetch(`${API_BASE}/identities/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -281,12 +281,12 @@ export const api = {
 
   // Hotlist
   getHotlist: async (): Promise<HotlistEntry[]> => {
-    const res = await fetch(`${API_BASE}/hotlist`)
+    const res = await authenticatedFetch(`${API_BASE}/hotlist`)
     return res.json()
   },
 
   addHotlistEntry: async (plate_text: string, label?: string): Promise<HotlistEntry> => {
-    const res = await fetch(`${API_BASE}/hotlist?plate_text=${encodeURIComponent(plate_text)}${label ? `&label=${encodeURIComponent(label)}` : ''}`, {
+    const res = await authenticatedFetch(`${API_BASE}/hotlist?plate_text=${encodeURIComponent(plate_text)}${label ? `&label=${encodeURIComponent(label)}` : ''}`, {
       method: 'POST'
     })
     return res.json()
@@ -294,7 +294,7 @@ export const api = {
 
   // Media
   getSnapshotUrl: async (event_id: number): Promise<{ url: string }> => {
-    const res = await fetch(`${API_BASE}/media/snapshot/${event_id}`)
+    const res = await authenticatedFetch(`${API_BASE}/media/snapshot/${event_id}`)
     return res.json()
   },
 
@@ -303,7 +303,7 @@ export const api = {
     const params = new URLSearchParams()
     if (status) params.append('status', status)
     if (limit) params.append('limit', limit.toString())
-    const res = await fetch(`${API_BASE}/review-queue?${params}`)
+    const res = await authenticatedFetch(`${API_BASE}/review-queue?${params}`)
     if (!res.ok) throw new Error('Failed to fetch review queue')
     return res.json()
   },
@@ -315,7 +315,7 @@ export const api = {
     reviewed_by: string
     notes?: string
   }): Promise<any> => {
-    const res = await fetch(`${API_BASE}/feedback`, {
+    const res = await authenticatedFetch(`${API_BASE}/feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -331,7 +331,7 @@ export const api = {
   getProvisionalClusters: async (camera_id: number, hours_back?: number): Promise<any> => {
     const params = new URLSearchParams({ camera_id: camera_id.toString() })
     if (hours_back) params.append('hours_back', hours_back.toString())
-    const res = await fetch(`${API_BASE}/provisional-clusters?${params}`)
+    const res = await authenticatedFetch(`${API_BASE}/provisional-clusters?${params}`)
     if (!res.ok) throw new Error('Failed to fetch clusters')
     return res.json()
   },
@@ -349,7 +349,7 @@ export const api = {
     if (params.min_cluster_size) searchParams.append('min_cluster_size', params.min_cluster_size.toString())
     if (params.consolidate !== undefined) searchParams.append('consolidate', params.consolidate.toString())
 
-    const res = await fetch(`${API_BASE}/advanced-clusters?${searchParams}`)
+    const res = await authenticatedFetch(`${API_BASE}/advanced-clusters?${searchParams}`)
     if (!res.ok) throw new Error('Failed to fetch advanced clusters')
     return res.json()
   },
@@ -360,7 +360,7 @@ export const api = {
     canonical_id?: string
     new_identity_name?: string
   }): Promise<any> => {
-    const res = await fetch(`${API_BASE}/clusters/${data.cluster_id}/assign`, {
+    const res = await authenticatedFetch(`${API_BASE}/clusters/${data.cluster_id}/assign`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -372,6 +372,64 @@ export const api = {
     if (!res.ok) {
       const error = await res.json()
       throw new Error(error.detail || 'Failed to assign cluster')
+    }
+    return res.json()
+  },
+
+  deleteIdentity: async (id: string): Promise<void> => {
+    const res = await authenticatedFetch(`${API_BASE}/identities/${id}`, {
+      method: 'DELETE'
+    })
+    if (!res.ok) {
+      const error = await res.json()
+      throw new Error(error.detail || 'Failed to delete identity')
+    }
+  },
+
+  linkProvisionalToIdentity: async (canonicalId: string, provisionalId: string): Promise<any> => {
+    const res = await authenticatedFetch(`${API_BASE}/identities/${canonicalId}/link-provisional`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provisional_id: provisionalId })
+    })
+    if (!res.ok) {
+      const error = await res.json()
+      throw new Error(error.detail || 'Failed to link provisional identity')
+    }
+    return res.json()
+  },
+
+  createIdentityFromProvisional: async (displayName: string, provisionalId: string): Promise<Identity> => {
+    const res = await authenticatedFetch(`${API_BASE}/identities/from-provisional`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        display_name: displayName,
+        provisional_id: provisionalId
+      })
+    })
+    if (!res.ok) {
+      const error = await res.json()
+      throw new Error(error.detail || 'Failed to create identity')
+    }
+    return res.json()
+  },
+
+  // Playback
+  getRecordingDates: async (cameraId: number, quality: string): Promise<{ dates: string[] }> => {
+    const res = await authenticatedFetch(`${API_BASE}/playback/recordings/${cameraId}/dates?quality=${quality}`)
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ detail: 'Failed to fetch recording dates' }))
+      throw new Error(error.detail || 'Failed to fetch recording dates')
+    }
+    return res.json()
+  },
+
+  getRecordingTimeline: async (cameraId: number, quality: string, date: string): Promise<any> => {
+    const res = await authenticatedFetch(`${API_BASE}/playback/recordings/${cameraId}/timeline?quality=${quality}&date=${date}`)
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ detail: 'Failed to fetch timeline' }))
+      throw new Error(error.detail || 'Failed to fetch timeline')
     }
     return res.json()
   }

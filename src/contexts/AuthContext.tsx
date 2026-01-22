@@ -80,13 +80,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error: any) {
       console.error('Login error:', error)
 
-      // Provide specific error messages for common SSL/connection issues
+      // Provide specific error messages for common connection issues
       if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
-        // Check if backend URL is using HTTP
-        if (API_BASE.startsWith('http://')) {
-          throw new Error('Backend is using HTTP but frontend is HTTPS. Backend must use HTTPS to avoid mixed content errors. Please configure a secure backend URL.')
+        // Check if it's a mixed content error (HTTPS frontend trying to access HTTP backend)
+        if (window.location.protocol === 'https:' && API_BASE.startsWith('http://')) {
+          throw new Error('Mixed content error: Frontend is HTTPS but backend is HTTP. Backend must use HTTPS when frontend is deployed on HTTPS. Use Cloudflare Tunnel, ngrok, or configure proper SSL certificate.')
         }
-        throw new Error('Cannot connect to backend server. Please ensure: (1) Backend is running, (2) Backend URL is correct, (3) Backend has valid HTTPS certificate, (4) CORS is configured properly.')
+        // Generic connection error
+        throw new Error(`Cannot connect to backend at ${API_BASE}. Please ensure: (1) Backend is running, (2) Backend URL is correct, (3) CORS is configured properly.`)
       }
 
       throw error

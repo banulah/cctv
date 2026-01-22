@@ -146,14 +146,7 @@ export default function Identities() {
 
   const handleDeleteIdentity = async (id: string) => {
     try {
-      const response = await fetch(`/api/identities/${id}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete identity')
-      }
-
+      await api.deleteIdentity(id)
       alert('✅ Identity deleted successfully!')
       await loadData()
     } catch (error) {
@@ -165,16 +158,7 @@ export default function Identities() {
   const handlePromoteToKnown = async (provisionalId: string, canonicalId: string) => {
     try {
       // Call backend to link provisional observations to canonical identity
-      const response = await fetch(`/api/identities/${canonicalId}/link-provisional`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provisional_id: provisionalId })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to link provisional identity')
-      }
-
+      await api.linkProvisionalToIdentity(canonicalId, provisionalId)
       alert('✅ Successfully linked unknown person to identity!')
       await loadData()
     } catch (error) {
@@ -186,19 +170,7 @@ export default function Identities() {
   const handleCreateIdentityFromProvisional = async (provisionalId: string, name: string) => {
     try {
       // Create the new identity with the provisional ID
-      const response = await fetch('/api/identities/from-provisional', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          display_name: name.trim(),
-          provisional_id: provisionalId
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to create identity')
-      }
-
+      await api.createIdentityFromProvisional(name.trim(), provisionalId)
       alert(`✅ Identity "${name}" created successfully!`)
       await loadData()
     } catch (error) {
